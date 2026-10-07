@@ -29,21 +29,35 @@ import shutil
 
 load_dotenv()
 
+# ---------------- AI ----------------
+
 AI_API_KEY = os.getenv("AI_API_KEY")
 
 AI_BASE_URL = os.getenv(
     "AI_BASE_URL",
-    "https://api.groq.com/openai/v1"
+    "https://api.groq.com/openai/v1",
 )
 
 AI_MODEL = os.getenv(
     "AI_MODEL",
-    "openai/gpt-oss-120b"
+    "openai/gpt-oss-120b",
 )
 
+# ---------------- SUPABASE ----------------
+#
+# Supports both:
+#   SUPABASE_SECRET_KEY
+# and the older:
+#   SUPABASE_SERVICE_ROLE_KEY
+#
+# So you can use your current Render secret key without
+# changing the rest of the application.
+
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv(
-    "SUPABASE_SERVICE_ROLE_KEY"
+
+SUPABASE_SECRET_KEY = (
+    os.getenv("SUPABASE_SECRET_KEY")
+    or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 )
 
 
@@ -59,11 +73,19 @@ if AI_API_KEY:
             api_key=AI_API_KEY,
             base_url=AI_BASE_URL,
         )
+
         print("AI client initialized successfully.")
+
     except Exception as e:
-        print("AI client initialization failed:", e)
+        print(
+            "AI client initialization failed:",
+            repr(e),
+        )
+
 else:
-    print("WARNING: AI_API_KEY is not configured.")
+    print(
+        "WARNING: AI_API_KEY is not configured."
+    )
 
 
 # ============================================================
@@ -72,17 +94,27 @@ else:
 
 supabase: Optional[Client] = None
 
-if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+if SUPABASE_URL and SUPABASE_SECRET_KEY:
     try:
         supabase = create_client(
-            SUPABASE_URL,
-            SUPABASE_SERVICE_ROLE_KEY,
+            SUPABASE_URL.strip().rstrip("/"),
+            SUPABASE_SECRET_KEY.strip(),
         )
-        print("Supabase client initialized successfully.")
+
+        print(
+            "Supabase client initialized successfully."
+        )
+
     except Exception as e:
-        print("Supabase initialization failed:", repr(e))
+        print(
+            "Supabase initialization failed:",
+            repr(e),
+        )
+
 else:
-    print("WARNING: Supabase is not configured.")
+    print(
+        "WARNING: Supabase is not configured."
+    )
 
 
 # ============================================================
@@ -110,7 +142,7 @@ app.add_middleware(
 
 
 # ============================================================
-# LOCAL STORAGE
+# UPLOAD STORAGE
 # ============================================================
 
 UPLOAD_DIR = "uploads"
@@ -130,6 +162,12 @@ app.mount(
 # ============================================================
 # TEMPORARY MEMORY DATA
 # ============================================================
+#
+# Courses are stored in Supabase.
+#
+# These dictionaries/lists are used for features that are
+# currently not persisted in the database.
+#
 
 materials = []
 progress_data = {}
@@ -176,14 +214,19 @@ class QuizGenerate(BaseModel):
 # ============================================================
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(
+        timezone.utc
+    ).isoformat()
 
 
 def require_supabase():
     if not supabase:
         raise HTTPException(
             status_code=503,
-            detail="Supabase is not configured on the backend.",
+            detail=(
+                "Supabase is not configured "
+                "on the backend."
+            ),
         )
 
 
@@ -193,21 +236,32 @@ def extract_bearer_token(
     if not authorization:
         raise HTTPException(
             status_code=401,
-            detail="Authorization token is required.",
+            detail=(
+                "Authorization token is required."
+            ),
         )
 
-    if not authorization.lower().startswith("bearer "):
+    if not authorization.lower().startswith(
+        "bearer "
+    ):
         raise HTTPException(
             status_code=401,
-            detail="Invalid authorization format.",
+            detail=(
+                "Invalid authorization format."
+            ),
         )
 
-    token = authorization.split(" ", 1)[1].strip()
+    token = authorization.split(
+        " ",
+        1,
+    )[1].strip()
 
     if not token:
         raise HTTPException(
             status_code=401,
-            detail="Authorization token is empty.",
+            detail=(
+                "Authorization token is empty."
+            ),
         )
 
     return token
@@ -216,6 +270,11 @@ def extract_bearer_token(
 def get_current_user(
     authorization: Optional[str],
 ):
+    """
+    Validate the Supabase access token and return
+    the authenticated Supabase user.
+    """
+
     require_supabase()
 
     token = extract_bearer_token(
@@ -223,14 +282,18 @@ def get_current_user(
     )
 
     try:
-        response = supabase.auth.get_user(token)
+        response = (
+            supabase.auth.get_user(token)
+        )
 
         user = response.user
 
         if not user:
             raise HTTPException(
                 status_code=401,
-                detail="Invalid or expired session.",
+                detail=(
+                    "Invalid or expired session."
+                ),
             )
 
         return user
@@ -239,66 +302,136 @@ def get_current_user(
         raise
 
     except Exception as e:
-        print("Supabase auth error:", repr(e))
+        print(
+            "Supabase auth error:",
+            repr(e),
+        )
 
         raise HTTPException(
             status_code=401,
-            detail="Invalid or expired session.",
+            detail=(
+                "Invalid or expired session."
+            ),
         )
 
 
 def normalize_course(course: dict):
-    course_id = str(course.get("id"))
+    """
+    Convert a Supabase course row into the format
+    expected by the frontend.
+    """
+
+    course_id = str(
+        course.get("id")
+    )
+
+    # Current database may not have material_count,
+    # progress or completed columns. Therefore these
+    # values are handled safely.
 
     course_material_count = len(
         [
             material
             for material in materials
-            if material.get("course_id") == course_id
+            if str(
+                material.get("course_id")
+            )
+            == course_id
         ]
     )
 
-    memory_progress = progress_data.get(
-        course_id,
-        {},
-    ).get(
+    database_progress = course.get(
         "progress",
-        course.get("progress", 0) or 0,
+        0,
     )
 
-    completed = bool(
-        course.get(
-            "completed",
-            int(memory_progress) >= 100,
+    if database_progress is None:
+        database_progress = 0
+
+    memory_progress = (
+        progress_data
+        .get(course_id, {})
+        .get(
+            "progress",
+            database_progress,
         )
     )
 
-    created_at = course.get(
-        "created_at",
-        now_iso(),
+    try:
+        progress = int(
+            memory_progress
+        )
+    except Exception:
+        progress = 0
+
+    progress = max(
+        0,
+        min(progress, 100),
     )
 
-    updated_at = course.get(
-        "updated_at",
-        created_at,
+    completed_value = course.get(
+        "completed"
     )
+
+    if completed_value is None:
+        completed = (
+            progress >= 100
+        )
+    else:
+        completed = bool(
+            completed_value
+        )
+
+    created_at = course.get(
+        "created_at"
+    ) or now_iso()
+
+    updated_at = course.get(
+        "updated_at"
+    ) or created_at
 
     return {
         "id": course_id,
-        "user_id": str(course.get("user_id", "")),
-        "title": course.get("title", ""),
+
+        "user_id": str(
+            course.get(
+                "user_id",
+                "",
+            )
+        ),
+
+        "title": course.get(
+            "title",
+            "",
+        ),
+
         "description": course.get(
             "description",
             "",
         ),
+
         "subject": course.get(
             "subject",
             "General",
         ),
-        "material_count": course_material_count,
-        "progress": int(memory_progress),
+
+        "material_count": (
+            course.get(
+                "material_count"
+            )
+            if course.get(
+                "material_count"
+            )
+            is not None
+            else course_material_count
+        ),
+
+        "progress": progress,
+
         "completed": completed,
+
         "created_at": created_at,
+
         "updated_at": updated_at,
     }
 
@@ -306,14 +439,22 @@ def normalize_course(course: dict):
 def get_user_courses(
     user_id: str,
 ):
+    """
+    Load courses belonging only to the logged-in user.
+    """
+
     require_supabase()
 
     try:
+
         response = (
             supabase
             .table("courses")
             .select("*")
-            .eq("user_id", user_id)
+            .eq(
+                "user_id",
+                user_id,
+            )
             .order(
                 "created_at",
                 desc=True,
@@ -321,7 +462,10 @@ def get_user_courses(
             .execute()
         )
 
-        rows = response.data or []
+        rows = (
+            response.data
+            or []
+        )
 
         return [
             normalize_course(row)
@@ -329,11 +473,17 @@ def get_user_courses(
         ]
 
     except Exception as e:
-        print("Get courses error:", repr(e))
+
+        print(
+            "Get courses error:",
+            repr(e),
+        )
 
         raise HTTPException(
             status_code=500,
-            detail="Failed to load courses.",
+            detail=(
+                "Failed to load courses."
+            ),
         )
 
 
@@ -341,20 +491,35 @@ def get_user_course(
     course_id: str,
     user_id: str,
 ):
+    """
+    Get exactly one course belonging to
+    the authenticated user.
+    """
+
     require_supabase()
 
     try:
+
         response = (
             supabase
             .table("courses")
             .select("*")
-            .eq("id", course_id)
-            .eq("user_id", user_id)
+            .eq(
+                "id",
+                course_id,
+            )
+            .eq(
+                "user_id",
+                user_id,
+            )
             .limit(1)
             .execute()
         )
 
-        rows = response.data or []
+        rows = (
+            response.data
+            or []
+        )
 
         if not rows:
             raise HTTPException(
@@ -370,59 +535,73 @@ def get_user_course(
         raise
 
     except Exception as e:
-        print("Get course error:", repr(e))
+
+        print(
+            "Get course error:",
+            repr(e),
+        )
 
         raise HTTPException(
             status_code=500,
-            detail="Failed to load course.",
+            detail=(
+                "Failed to load course."
+            ),
         )
 
 
-def try_persist_progress(
+def persist_progress(
     course_id: str,
     user_id: str,
     progress: int,
     completed: bool,
 ):
+    """
+    Try to persist progress.
+
+    This is intentionally tolerant because the existing
+    courses table may not yet contain progress/completed/
+    updated_at columns.
+    """
+
+    progress_data[
+        course_id
+    ] = {
+        "progress": progress,
+        "updated_at": now_iso(),
+    }
+
     if not supabase:
         return
 
     try:
-        # Only update columns that may exist.
-        # If a deployment/table doesn't contain them,
-        # the exception is safely ignored.
-        supabase.table("courses").update(
-            {
-                "progress": progress,
-                "completed": completed,
-                "updated_at": now_iso(),
-            }
-        ).eq(
-            "id",
-            course_id,
-        ).eq(
-            "user_id",
-            user_id,
-        ).execute()
+
+        update_data = {
+            "progress": progress,
+            "completed": completed,
+            "updated_at": now_iso(),
+        }
+
+        (
+            supabase
+            .table("courses")
+            .update(update_data)
+            .eq(
+                "id",
+                course_id,
+            )
+            .eq(
+                "user_id",
+                user_id,
+            )
+            .execute()
+        )
 
     except Exception as e:
+
         print(
-            "Progress persistence skipped:",
+            "Progress database update skipped:",
             repr(e),
         )
-
-
-def get_course_for_internal_use(
-    course_id: str,
-    user_id: Optional[str] = None,
-):
-    if supabase and user_id:
-        return get_user_course(
-            course_id,
-            user_id,
-        )
-
-    return None
 
 
 # ============================================================
@@ -431,8 +610,11 @@ def get_course_for_internal_use(
 
 @app.get("/")
 def root():
+
     return {
-        "message": "Welcome to AI StudyMate API",
+        "message": (
+            "Welcome to AI StudyMate API"
+        ),
         "docs": "/docs",
         "health": "/health",
         "status": "running",
@@ -445,6 +627,7 @@ def root():
 
 @app.get("/health")
 def health():
+
     return {
         "status": "healthy",
         "app": "AI StudyMate",
@@ -463,60 +646,86 @@ def health():
 # AUTH
 # ============================================================
 
-@app.get("/api/auth/status")
+@app.get(
+    "/api/auth/status"
+)
 def auth_status(
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
 
-    full_name = user.user_metadata.get(
-        "full_name"
+    full_name = (
+        user.user_metadata.get(
+            "full_name"
+        )
+        if user.user_metadata
+        else None
+    )
+
+    name = (
+        full_name
+        if isinstance(
+            full_name,
+            str,
+        )
+        and full_name.strip()
+        else (
+            user.email
+            or "Student"
+        )
     )
 
     return {
         "authenticated": True,
         "user": {
             "id": str(user.id),
-            "name": (
-                full_name
-                if full_name
-                else (
-                    user.email
-                    or "Student"
-                )
-            ),
+            "name": name,
         },
     }
 
 
-@app.get("/api/auth/me")
+@app.get(
+    "/api/auth/me"
+)
 def auth_me(
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
 
-    full_name = user.user_metadata.get(
-        "full_name"
+    full_name = (
+        user.user_metadata.get(
+            "full_name"
+        )
+        if user.user_metadata
+        else None
+    )
+
+    name = (
+        full_name
+        if isinstance(
+            full_name,
+            str,
+        )
+        and full_name.strip()
+        else (
+            user.email
+            or "Student"
+        )
     )
 
     return {
         "id": str(user.id),
-        "name": (
-            full_name
-            if full_name
-            else (
-                user.email
-                or "Student"
-            )
-        ),
+        "name": name,
         "email": user.email,
     }
 
@@ -525,12 +734,15 @@ def auth_me(
 # COURSES
 # ============================================================
 
-@app.get("/api/courses")
+@app.get(
+    "/api/courses"
+)
 def get_courses(
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -540,13 +752,16 @@ def get_courses(
     )
 
 
-@app.post("/api/courses")
+@app.post(
+    "/api/courses"
+)
 def create_course(
     data: CourseCreate,
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -554,19 +769,29 @@ def create_course(
     title = data.title.strip()
 
     if not title:
+
         raise HTTPException(
             status_code=400,
-            detail="Course title is required.",
+            detail=(
+                "Course title is required."
+            ),
         )
 
     course_data = {
-        "user_id": str(user.id),
+        "user_id": str(
+            user.id
+        ),
+
         "title": title,
+
         "description": (
-            data.description or ""
+            data.description
+            or ""
         ).strip(),
+
         "subject": (
-            data.subject or "General"
+            data.subject
+            or "General"
         ).strip()
         or "General",
     }
@@ -574,6 +799,7 @@ def create_course(
     require_supabase()
 
     try:
+
         response = (
             supabase
             .table("courses")
@@ -581,12 +807,18 @@ def create_course(
             .execute()
         )
 
-        rows = response.data or []
+        rows = (
+            response.data
+            or []
+        )
 
         if not rows:
+
             raise HTTPException(
                 status_code=500,
-                detail="Course was not created.",
+                detail=(
+                    "Course was not created."
+                ),
             )
 
         return normalize_course(
@@ -597,6 +829,7 @@ def create_course(
         raise
 
     except Exception as e:
+
         print(
             "Create course error:",
             repr(e),
@@ -604,17 +837,22 @@ def create_course(
 
         raise HTTPException(
             status_code=500,
-            detail="Failed to create course.",
+            detail=(
+                "Failed to create course."
+            ),
         )
 
 
-@app.get("/api/courses/{course_id}")
+@app.get(
+    "/api/courses/{course_id}"
+)
 def get_course(
     course_id: str,
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -625,31 +863,44 @@ def get_course(
     )
 
 
-@app.delete("/api/courses/{course_id}")
+@app.delete(
+    "/api/courses/{course_id}"
+)
 def delete_course(
     course_id: str,
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
 
-    user_id = str(user.id)
+    user_id = str(
+        user.id
+    )
 
+    # Verify ownership first.
     course = get_user_course(
         course_id,
         user_id,
     )
 
     try:
+
         (
             supabase
             .table("courses")
             .delete()
-            .eq("id", course["id"])
-            .eq("user_id", user_id)
+            .eq(
+                "id",
+                course["id"],
+            )
+            .eq(
+                "user_id",
+                user_id,
+            )
             .execute()
         )
 
@@ -658,7 +909,11 @@ def delete_course(
         materials = [
             material
             for material in materials
-            if material.get("course_id")
+            if str(
+                material.get(
+                    "course_id"
+                )
+            )
             != course_id
         ]
 
@@ -669,10 +924,13 @@ def delete_course(
 
         return {
             "success": True,
-            "message": "Course deleted successfully.",
+            "message": (
+                "Course deleted successfully."
+            ),
         }
 
     except Exception as e:
+
         print(
             "Delete course error:",
             repr(e),
@@ -680,7 +938,9 @@ def delete_course(
 
         raise HTTPException(
             status_code=500,
-            detail="Failed to delete course.",
+            detail=(
+                "Failed to delete course."
+            ),
         )
 
 
@@ -698,11 +958,14 @@ def update_course_progress(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
 
-    user_id = str(user.id)
+    user_id = str(
+        user.id
+    )
 
     course = get_user_course(
         course_id,
@@ -712,19 +975,18 @@ def update_course_progress(
     progress = max(
         0,
         min(
-            int(data.progress),
+            int(
+                data.progress
+            ),
             100,
         ),
     )
 
-    completed = progress >= 100
+    completed = (
+        progress >= 100
+    )
 
-    progress_data[course_id] = {
-        "progress": progress,
-        "updated_at": now_iso(),
-    }
-
-    try_persist_progress(
+    persist_progress(
         course_id,
         user_id,
         progress,
@@ -742,12 +1004,15 @@ def update_course_progress(
 # PROGRESS API
 # ============================================================
 
-@app.get("/api/progress")
+@app.get(
+    "/api/progress"
+)
 def get_progress(
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -794,6 +1059,7 @@ def get_course_progress(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -806,7 +1072,11 @@ def get_course_progress(
     course_materials = [
         material
         for material in materials
-        if material.get("course_id")
+        if str(
+            material.get(
+                "course_id"
+            )
+        )
         == course_id
     ]
 
@@ -829,6 +1099,7 @@ def progress_recommendations(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -890,12 +1161,15 @@ def progress_recommendations(
 # MATERIALS
 # ============================================================
 
-@app.get("/api/materials")
+@app.get(
+    "/api/materials"
+)
 def get_materials(
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     get_current_user(
         authorization
     )
@@ -912,6 +1186,7 @@ def get_course_materials(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -924,18 +1199,25 @@ def get_course_materials(
     return [
         material
         for material in materials
-        if material.get("course_id")
+        if str(
+            material.get(
+                "course_id"
+            )
+        )
         == course_id
     ]
 
 
-@app.post("/api/materials")
+@app.post(
+    "/api/materials"
+)
 def create_material(
     data: dict,
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -945,26 +1227,34 @@ def create_material(
     )
 
     if course_id:
+
         get_user_course(
             course_id,
             str(user.id),
         )
 
     material = {
-        "id": str(uuid4()),
+        "id": str(
+            uuid4()
+        ),
+
         "title": data.get(
             "title",
             "Untitled Material",
         ),
+
         "type": data.get(
             "type",
             "note",
         ),
+
         "course_id": course_id,
+
         "url": data.get(
             "url",
             "",
         ),
+
         "created_at": now_iso(),
     }
 
@@ -979,29 +1269,41 @@ def create_material(
 # FILE UPLOAD
 # ============================================================
 
-@app.post("/upload")
+@app.post(
+    "/upload"
+)
 async def upload(
     file: UploadFile = File(...),
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     get_current_user(
         authorization
     )
 
     if not file.filename:
+
         raise HTTPException(
             status_code=400,
             detail="No file selected.",
         )
 
-    file_id = str(uuid4())
+    file_id = str(
+        uuid4()
+    )
 
     safe_name = (
         file.filename
-        .replace("\\", "_")
-        .replace("/", "_")
+        .replace(
+            "\\",
+            "_",
+        )
+        .replace(
+            "/",
+            "_",
+        )
     )
 
     filename = (
@@ -1028,7 +1330,9 @@ async def upload(
         "title": file.filename,
         "filename": filename,
         "type": "file",
-        "url": f"/uploads/{filename}",
+        "url": (
+            f"/uploads/{filename}"
+        ),
         "created_at": now_iso(),
     }
 
@@ -1038,13 +1342,15 @@ async def upload(
 
     return {
         "success": True,
-        "message": "File uploaded successfully.",
+        "message": (
+            "File uploaded successfully."
+        ),
         "material": material,
     }
 
 
 # ============================================================
-# MATERIAL UPLOAD COMPATIBILITY
+# MATERIAL UPLOAD
 # ============================================================
 
 @app.post(
@@ -1057,6 +1363,7 @@ async def upload_material(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -1067,17 +1374,26 @@ async def upload_material(
     )
 
     if not file.filename:
+
         raise HTTPException(
             status_code=400,
             detail="No file selected.",
         )
 
-    file_id = str(uuid4())
+    file_id = str(
+        uuid4()
+    )
 
     safe_name = (
         file.filename
-        .replace("\\", "_")
-        .replace("/", "_")
+        .replace(
+            "\\",
+            "_",
+        )
+        .replace(
+            "/",
+            "_",
+        )
     )
 
     filename = (
@@ -1105,7 +1421,9 @@ async def upload_material(
         "filename": filename,
         "type": "file",
         "course_id": course_id,
-        "url": f"/uploads/{filename}",
+        "url": (
+            f"/uploads/{filename}"
+        ),
         "created_at": now_iso(),
     }
 
@@ -1125,6 +1443,7 @@ def material_status(
         default=None
     ),
 ):
+
     get_current_user(
         authorization
     )
@@ -1136,7 +1455,9 @@ def material_status(
             return {
                 "id": material_id,
                 "status": "completed",
-                "message": "Material is ready.",
+                "message": (
+                    "Material is ready."
+                ),
             }
 
     raise HTTPException(
@@ -1146,16 +1467,19 @@ def material_status(
 
 
 # ============================================================
-# AI TUTOR - REAL AI
+# AI TUTOR
 # ============================================================
 
-@app.post("/api/tutor/ask")
+@app.post(
+    "/api/tutor/ask"
+)
 def ask_tutor(
     data: AskRequest,
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -1165,7 +1489,9 @@ def ask_tutor(
     if not question:
 
         return {
-            "answer": "Please enter a question.",
+            "answer": (
+                "Please enter a question."
+            ),
             "session_id": (
                 data.session_id
                 or str(uuid4())
@@ -1177,14 +1503,13 @@ def ask_tutor(
         or str(uuid4())
     )
 
-    user_id = str(user.id)
-
     course = None
 
     if data.course_id:
+
         course = get_user_course(
             data.course_id,
-            user_id,
+            str(user.id),
         )
 
     course_title = (
@@ -1200,9 +1525,14 @@ def ask_tutor(
     )
 
     if session_id not in tutor_history:
-        tutor_history[session_id] = []
 
-    tutor_history[session_id].append(
+        tutor_history[
+            session_id
+        ] = []
+
+    tutor_history[
+        session_id
+    ].append(
         {
             "role": "user",
             "content": question,
@@ -1274,11 +1604,9 @@ Your responsibilities:
 14. Be helpful, accurate and concise unless the student asks for detail.
 """
 
-    previous_messages = (
-        tutor_history.get(
-            session_id,
-            [],
-        )
+    previous_messages = tutor_history.get(
+        session_id,
+        [],
     )
 
     messages = [
@@ -1298,6 +1626,11 @@ Your responsibilities:
             "role"
         )
 
+        content = message.get(
+            "content",
+            "",
+        )
+
         if role in [
             "user",
             "assistant",
@@ -1306,10 +1639,7 @@ Your responsibilities:
             messages.append(
                 {
                     "role": role,
-                    "content": message.get(
-                        "content",
-                        "",
-                    ),
+                    "content": content,
                 }
             )
 
@@ -1352,7 +1682,7 @@ Your responsibilities:
 
         answer = (
             "I couldn't connect to the AI service right now.\n\n"
-            f"Error: {str(e)}"
+            "Please try again in a moment."
         )
 
     tutor_history[
@@ -1387,6 +1717,7 @@ def get_tutor_history(
         default=None
     ),
 ):
+
     get_current_user(
         authorization
     )
@@ -1410,12 +1741,15 @@ def ask(
         default=None
     ),
 ):
+
     get_current_user(
         authorization
     )
 
     return {
-        "answer": "AI StudyMate Tutor is ready.",
+        "answer": (
+            "AI StudyMate Tutor is ready."
+        ),
     }
 
 
@@ -1423,12 +1757,15 @@ def ask(
 # QUIZ
 # ============================================================
 
-@app.get("/api/quiz")
+@app.get(
+    "/api/quiz"
+)
 def get_quiz(
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     get_current_user(
         authorization
     )
@@ -1492,6 +1829,7 @@ def generate_quiz(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -1584,13 +1922,21 @@ def generate_quiz(
         },
     ]
 
-    questions = base_questions[:count]
+    questions = base_questions[
+        :count
+    ]
 
-    quiz_id = str(uuid4())
+    quiz_id = str(
+        uuid4()
+    )
 
-    quizzes[quiz_id] = {
+    quizzes[
+        quiz_id
+    ] = {
         "course_id": data.course_id,
-        "user_id": str(user.id),
+        "user_id": str(
+            user.id
+        ),
         "questions": questions,
     }
 
@@ -1623,11 +1969,14 @@ def submit_quiz(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
 
-    user_id = str(user.id)
+    user_id = str(
+        user.id
+    )
 
     if (
         data.quiz_id
@@ -1638,10 +1987,16 @@ def submit_quiz(
             data.quiz_id
         ]
 
-        if quiz.get("user_id") != user_id:
+        if quiz.get(
+            "user_id"
+        ) != user_id:
+
             raise HTTPException(
                 status_code=403,
-                detail="Quiz does not belong to this user.",
+                detail=(
+                    "Quiz does not belong "
+                    "to this user."
+                ),
             )
 
         score = 0
@@ -1660,7 +2015,10 @@ def submit_quiz(
                 question_id
             )
 
-            if submitted == question["answer"]:
+            if submitted == question[
+                "answer"
+            ]:
+
                 score += 1
 
         total = len(
@@ -1677,7 +2035,9 @@ def submit_quiz(
 
         score = 0
 
-        for question_id, answer in data.answers.items():
+        for question_id, answer in (
+            data.answers.items()
+        ):
 
             if (
                 question_id
@@ -1687,6 +2047,7 @@ def submit_quiz(
                     question_id
                 ]
             ):
+
                 score += 1
 
         total = len(
@@ -1695,7 +2056,9 @@ def submit_quiz(
 
     percentage = (
         int(
-            (score / total) * 100
+            (
+                score / total
+            ) * 100
         )
         if total
         else 0
@@ -1734,14 +2097,7 @@ def submit_quiz(
             new_progress >= 100
         )
 
-        progress_data[
-            data.course_id
-        ] = {
-            "progress": new_progress,
-            "updated_at": now_iso(),
-        }
-
-        try_persist_progress(
+        persist_progress(
             data.course_id,
             user_id,
             new_progress,
@@ -1752,7 +2108,9 @@ def submit_quiz(
         "score": score,
         "total": total,
         "percentage": percentage,
-        "message": "Quiz submitted successfully",
+        "message": (
+            "Quiz submitted successfully"
+        ),
     }
 
 
@@ -1760,12 +2118,15 @@ def submit_quiz(
 # DASHBOARD
 # ============================================================
 
-@app.get("/api/dashboard")
+@app.get(
+    "/api/dashboard"
+)
 def dashboard(
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     user = get_current_user(
         authorization
     )
@@ -1812,12 +2173,15 @@ def dashboard(
 # SERVER TEST
 # ============================================================
 
-@app.get("/api/test")
+@app.get(
+    "/api/test"
+)
 def test(
     authorization: Optional[str] = Header(
         default=None
     ),
 ):
+
     get_current_user(
         authorization
     )
