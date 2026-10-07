@@ -16,6 +16,7 @@ const API_BASE = (
 async function getToken(): Promise<string | null> {
   try {
     const { data, error } = await supabase.auth.getSession();
+
     const session = error ? null : data.session;
 
     syncStoredSession(session);
@@ -40,17 +41,38 @@ async function request<T>(
     ...((options.headers as Record<string, string>) || {}),
   };
 
+  // ----------------------------------------------------------
+  // Authorization
+  // ----------------------------------------------------------
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // ----------------------------------------------------------
+  // Content-Type
+  // ----------------------------------------------------------
+
+  // Don't set JSON Content-Type for FormData uploads.
   if (!(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
 
+  // ----------------------------------------------------------
+  // Full URL
+  // ----------------------------------------------------------
+
   const url = `${API_BASE}${path}`;
 
-  console.log('API Request:', options.method || 'GET', url);
+  console.log(
+    'API Request:',
+    options.method || 'GET',
+    url
+  );
+
+  // ----------------------------------------------------------
+  // FETCH
+  // ----------------------------------------------------------
 
   let res: Response;
 
@@ -67,6 +89,10 @@ async function request<T>(
     );
   }
 
+  // ----------------------------------------------------------
+  // RESPONSE
+  // ----------------------------------------------------------
+
   const contentType =
     res.headers.get('content-type') || '';
 
@@ -77,6 +103,10 @@ async function request<T>(
   } else {
     data = await res.text().catch(() => '');
   }
+
+  // ----------------------------------------------------------
+  // ERROR HANDLING
+  // ----------------------------------------------------------
 
   if (!res.ok) {
     console.error('API Error:', {
@@ -124,15 +154,21 @@ export const coursesApi = {
     description?: string;
     subject?: string;
   }) =>
-    request<any>('/api/courses', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+    request<any>(
+      '/api/courses',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    ),
 
   delete: (id: string) =>
-    request<any>(`/api/courses/${id}`, {
-      method: 'DELETE',
-    }),
+    request<any>(
+      `/api/courses/${id}`,
+      {
+        method: 'DELETE',
+      }
+    ),
 };
 
 // ============================================================
@@ -151,8 +187,15 @@ export const materialsApi = {
   ) => {
     const form = new FormData();
 
-    form.append('course_id', courseId);
-    form.append('file', file);
+    form.append(
+      'course_id',
+      courseId
+    );
+
+    form.append(
+      'file',
+      file
+    );
 
     return request<any>(
       '/api/materials/upload',
