@@ -996,10 +996,6 @@ def create_course(
             rest_url,
             headers={
                 "apikey": SUPABASE_SECRET_KEY.strip(),
-                "Authorization": (
-                    "Bearer "
-                    + SUPABASE_SECRET_KEY.strip()
-                ),
                 "Content-Type": "application/json",
                 "Accept": "application/json",
                 "Prefer": "return=representation",
