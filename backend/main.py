@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 
 import os
 import shutil
+import httpx
 
 
 # ============================================================
@@ -957,7 +958,6 @@ def create_course(
         default=None
     ),
 ):
-
     user = get_current_user(
         authorization
     )
@@ -965,75 +965,78 @@ def create_course(
     title = data.title.strip()
 
     if not title:
-
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Course title is required."
-            ),
+            detail="Course title is required.",
         )
 
-    # --------------------------------------------------------
-    # IMPORTANT
-    # The user_id comes from the authenticated Supabase user.
-    # It is NEVER taken from the frontend request body.
-    # --------------------------------------------------------
-
     course_data = {
-
-        "user_id": str(
-            user.id
-        ),
-
+        "user_id": str(user.id),
         "title": title,
-
         "description": (
-            data.description
-            or ""
+            data.description or ""
         ).strip(),
-
         "subject": (
-            data.subject
-            or "General"
-        ).strip()
-        or "General",
+            data.subject or "General"
+        ).strip() or "General",
     }
 
     require_supabase()
 
     try:
+        # Direct Supabase REST request using the
+        # server-side secret key. This avoids any
+        # user-session/JWT state affecting the insert.
+        rest_url = (
+            SUPABASE_URL.strip().rstrip("/")
+            + "/rest/v1/courses"
+        )
 
-        response = (
-            db_client
-            .table("courses")
-            .insert(
-                course_data
+        response = httpx.post(
+            rest_url,
+            headers={
+                "apikey": SUPABASE_SECRET_KEY.strip(),
+                "Authorization": (
+                    "Bearer "
+                    + SUPABASE_SECRET_KEY.strip()
+                ),
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Prefer": "return=representation",
+            },
+            json=course_data,
+            timeout=20.0,
+        )
+
+        if response.status_code >= 400:
+            print(
+                "Supabase course insert failed:",
+                response.status_code,
+                response.text[:1000],
             )
-            .execute()
-        )
-
-        rows = (
-            response.data
-            or []
-        )
-
-        if not rows:
 
             raise HTTPException(
-                status_code=500,
+                status_code=502,
                 detail=(
-                    "Course was not created."
+                    "Supabase rejected course creation. "
+                    f"HTTP {response.status_code}"
                 ),
             )
 
-        created_course = (
-            normalize_course(
-                rows[0]
+        rows = response.json()
+
+        if not rows:
+            raise HTTPException(
+                status_code=500,
+                detail="Course was not created.",
             )
+
+        created_course = normalize_course(
+            rows[0]
         )
 
         print(
-            "Course created:",
+            "Course created successfully:",
             created_course["id"],
         )
 
@@ -1043,7 +1046,6 @@ def create_course(
         raise
 
     except Exception as e:
-
         print(
             "Create course error:",
             repr(e),
@@ -1051,11 +1053,8 @@ def create_course(
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Failed to create course."
-            ),
+            detail="Failed to create course.",
         )
-
 
 # ============================================================
 # COURSE - GET
