@@ -2696,3 +2696,286 @@ def test(
             db_client
         ),
     }
+
+# ============================================================
+# CODING PRACTICE (C / GCC)
+# The compiler runs inside the external Judge0 sandbox; user code
+# is never executed directly in the StudyMate API process.
+# ============================================================
+
+import time as _coding_time
+from concurrent.futures import ThreadPoolExecutor as _CodingPool
+
+
+class CodingRunRequest(BaseModel):
+    source_code: str
+    stdin: str = ""
+
+
+class CodingSubmitRequest(BaseModel):
+    problem_id: str
+    source_code: str
+
+
+_CODING_PROBLEMS = [
+    {
+        "id": "sum-two-numbers",
+        "title": "Sum of Two Numbers",
+        "difficulty": "Easy",
+        "description": "Read two integers and print their sum. Your program should read the values from standard input and print only the answer.",
+        "examples": [{"input": "3 5", "output": "8"}, {"input": "-2 7", "output": "5"}],
+        "constraints": ["-1,000,000,000 <= a, b <= 1,000,000,000", "Print the sum followed by a newline."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    long long a, b;\n    if (scanf(\"%lld %lld\", &a, &b) != 2) return 0;\n\n    // Write your solution here\n\n    return 0;\n}\n",
+        "tags": ["Basics", "Arithmetic"],
+        "tests": [{"stdin": "3 5\n", "expected": "8"}, {"stdin": "-2 7\n", "expected": "5"}, {"stdin": "100 250\n", "expected": "350"}],
+    },
+    {
+        "id": "even-or-odd",
+        "title": "Even or Odd",
+        "difficulty": "Easy",
+        "description": "Given an integer N, print Even if it is divisible by 2; otherwise print Odd. Match the output spelling exactly.",
+        "examples": [{"input": "4", "output": "Even"}, {"input": "7", "output": "Odd"}],
+        "constraints": ["-1,000,000,000 <= N <= 1,000,000,000", "Output exactly Even or Odd."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    long long n;\n    if (scanf(\"%lld\", &n) != 1) return 0;\n\n    // Write your solution here\n\n    return 0;\n}\n",
+        "tags": ["Conditions", "Modulo"],
+        "tests": [{"stdin": "4\n", "expected": "Even"}, {"stdin": "7\n", "expected": "Odd"}, {"stdin": "0\n", "expected": "Even"}],
+    },
+    {
+        "id": "largest-of-three",
+        "title": "Largest of Three Numbers",
+        "difficulty": "Easy",
+        "description": "Read three integers and print the largest value. The numbers are not necessarily distinct and may be negative.",
+        "examples": [{"input": "3 9 5", "output": "9"}],
+        "constraints": ["Each value fits in a signed 32-bit integer.", "Print only the largest value."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    int a, b, c;\n    if (scanf(\"%d %d %d\", &a, &b, &c) != 3) return 0;\n\n    // Write your solution here\n\n    return 0;\n}\n",
+        "tags": ["Conditions", "Comparisons"],
+        "tests": [{"stdin": "3 9 5\n", "expected": "9"}, {"stdin": "-2 -7 -4\n", "expected": "-2"}, {"stdin": "8 8 2\n", "expected": "8"}],
+    },
+    {
+        "id": "factorial",
+        "title": "Factorial",
+        "difficulty": "Easy",
+        "description": "Given a non-negative integer N, print N! (the product of all integers from 1 through N). By definition, 0! = 1.",
+        "examples": [{"input": "5", "output": "120"}, {"input": "0", "output": "1"}],
+        "constraints": ["0 <= N <= 12", "Print the result as an integer."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    int n;\n    if (scanf(\"%d\", &n) != 1) return 0;\n\n    // Write your solution here\n\n    return 0;\n}\n",
+        "tags": ["Loops", "Math"],
+        "tests": [{"stdin": "5\n", "expected": "120"}, {"stdin": "0\n", "expected": "1"}, {"stdin": "1\n", "expected": "1"}],
+    },
+    {
+        "id": "prime-number",
+        "title": "Prime Number Check",
+        "difficulty": "Medium",
+        "description": "Given an integer N, print Prime if N is a prime number; otherwise print Not Prime. Numbers less than 2 are not prime.",
+        "examples": [{"input": "7", "output": "Prime"}, {"input": "12", "output": "Not Prime"}],
+        "constraints": ["0 <= N <= 1,000,000,000", "Output exactly Prime or Not Prime."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    int n;\n    if (scanf(\"%d\", &n) != 1) return 0;\n\n    // Write your solution here\n\n    return 0;\n}\n",
+        "tags": ["Loops", "Number Theory"],
+        "tests": [{"stdin": "7\n", "expected": "Prime"}, {"stdin": "1\n", "expected": "Not Prime"}, {"stdin": "12\n", "expected": "Not Prime"}, {"stdin": "2\n", "expected": "Prime"}],
+    },
+    {
+        "id": "reverse-number",
+        "title": "Reverse a Number",
+        "difficulty": "Easy",
+        "description": "Read a non-negative integer and print its digits in reverse order. Any leading zeroes in the reversed result are naturally omitted.",
+        "examples": [{"input": "1234", "output": "4321"}, {"input": "500", "output": "5"}],
+        "constraints": ["0 <= N <= 2,147,483,647", "Print only the reversed number."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    long long n;\n    if (scanf(\"%lld\", &n) != 1) return 0;\n\n    // Write your solution here\n\n    return 0;\n}\n",
+        "tags": ["Loops", "Digits"],
+        "tests": [{"stdin": "1234\n", "expected": "4321"}, {"stdin": "500\n", "expected": "5"}, {"stdin": "0\n", "expected": "0"}],
+    },
+    {
+        "id": "palindrome-number",
+        "title": "Palindrome Number",
+        "difficulty": "Easy",
+        "description": "A number is a palindrome if it reads the same forwards and backwards. Read a non-negative integer and print Yes or No.",
+        "examples": [{"input": "121", "output": "Yes"}, {"input": "123", "output": "No"}],
+        "constraints": ["0 <= N <= 2,147,483,647", "Output exactly Yes or No."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    long long n;\n    if (scanf(\"%lld\", &n) != 1) return 0;\n\n    // Write your solution here\n\n    return 0;\n}\n",
+        "tags": ["Loops", "Digits"],
+        "tests": [{"stdin": "121\n", "expected": "Yes"}, {"stdin": "123\n", "expected": "No"}, {"stdin": "7\n", "expected": "Yes"}],
+    },
+    {
+        "id": "fibonacci-nth",
+        "title": "Nth Fibonacci Number",
+        "difficulty": "Medium",
+        "description": "Fibonacci numbers are defined as F(0)=0, F(1)=1, and F(n)=F(n-1)+F(n-2). Given N, print F(N).",
+        "examples": [{"input": "7", "output": "13"}, {"input": "0", "output": "0"}],
+        "constraints": ["0 <= N <= 45", "Use the zero-based index described above."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    int n;\n    if (scanf(\"%d\", &n) != 1) return 0;\n\n    // Write your solution here\n\n    return 0;\n}\n",
+        "tags": ["Loops", "Dynamic Programming"],
+        "tests": [{"stdin": "7\n", "expected": "13"}, {"stdin": "0\n", "expected": "0"}, {"stdin": "10\n", "expected": "55"}],
+    },
+    {
+        "id": "array-sum",
+        "title": "Sum of Array Elements",
+        "difficulty": "Medium",
+        "description": "The first input value is N, followed by N integers. Print the sum of the N array elements. Input may be separated by spaces or newlines.",
+        "examples": [{"input": "5\n1 2 3 4 5", "output": "15"}],
+        "constraints": ["1 <= N <= 1000", "Each element is between -1,000,000 and 1,000,000."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    int n;\n    if (scanf(\"%d\", &n) != 1) return 0;\n\n    // Read the array and calculate the sum\n\n    return 0;\n}\n",
+        "tags": ["Arrays", "Loops"],
+        "tests": [{"stdin": "5\n1 2 3 4 5\n", "expected": "15"}, {"stdin": "4\n-1 2 -3 4\n", "expected": "2"}, {"stdin": "1\n42\n", "expected": "42"}],
+    },
+    {
+        "id": "count-vowels",
+        "title": "Count Vowels",
+        "difficulty": "Easy",
+        "description": "Read a line of text and count the English vowels (a, e, i, o, u). Both uppercase and lowercase vowels count. Do not count y as a vowel.",
+        "examples": [{"input": "StudyMate", "output": "3"}, {"input": "AEIOU", "output": "5"}],
+        "constraints": ["The input line contains at most 1000 characters.", "Print only the vowel count."],
+        "starter_code": "#include <stdio.h>\n\nint main(void) {\n    int ch;\n    int count = 0;\n\n    // Read characters until newline or end-of-file\n\n    printf(\"%d\\n\", count);\n    return 0;\n}\n",
+        "tags": ["Strings", "Characters"],
+        "tests": [{"stdin": "StudyMate\n", "expected": "3"}, {"stdin": "AEIOU\n", "expected": "5"}, {"stdin": "rhythm\n", "expected": "0"}],
+    },
+]
+
+
+def _coding_public_problem(problem):
+    return {key: problem[key] for key in (
+        "id", "title", "difficulty", "description", "examples",
+        "constraints", "starter_code", "tags"
+    )}
+
+
+def _coding_judge_headers():
+    headers = {"Content-Type": "application/json"}
+    auth_token = os.getenv("JUDGE0_AUTH_TOKEN")
+    if auth_token:
+        headers["X-Auth-Token"] = auth_token
+    return headers
+
+
+def _coding_execute_c(source_code: str, stdin: str):
+    if not source_code or not source_code.strip():
+        raise HTTPException(status_code=400, detail="Source code is required.")
+    if len(source_code) > 25000:
+        raise HTTPException(status_code=413, detail="Source code is too large (maximum 25 KB).")
+    if len(stdin or "") > 5000:
+        raise HTTPException(status_code=413, detail="Input is too large (maximum 5 KB).")
+
+    judge_url = os.getenv("JUDGE0_BASE_URL", "https://ce.judge0.com").rstrip("/")
+    headers = _coding_judge_headers()
+    submission_payload = {
+        "source_code": source_code,
+        "language_id": 103,  # C (GCC 14.1.0) on the Judge0 CE language catalogue.
+        "stdin": stdin or "",
+        "cpu_time_limit": 2,
+        "cpu_extra_time": 0.5,
+        "wall_time_limit": 5,
+        "memory_limit": 128000,
+    }
+    try:
+        created = httpx.post(
+            f"{judge_url}/submissions/?base64_encoded=false&wait=false",
+            json=submission_payload,
+            headers=headers,
+            timeout=15.0,
+        )
+        if created.status_code in (401, 403):
+            raise HTTPException(
+                status_code=502,
+                detail="The C execution service requires authorization. Configure JUDGE0_AUTH_TOKEN in the backend environment."
+            )
+        created.raise_for_status()
+        token = (created.json() or {}).get("token")
+        if not token:
+            raise HTTPException(status_code=502, detail="The C execution service did not return a submission token.")
+
+        fields = "stdout,stderr,compile_output,message,status,status_id,time,memory"
+        for _ in range(24):
+            _coding_time.sleep(0.4)
+            result_response = httpx.get(
+                f"{judge_url}/submissions/{token}",
+                params={"base64_encoded": "false", "fields": fields},
+                headers=headers,
+                timeout=10.0,
+            )
+            if result_response.status_code in (401, 403):
+                raise HTTPException(status_code=502, detail="The C execution service rejected authorization. Check JUDGE0_AUTH_TOKEN.")
+            result_response.raise_for_status()
+            result = result_response.json() or {}
+            status = result.get("status") or {}
+            status_id = result.get("status_id") or status.get("id")
+            if status_id not in (1, 2):
+                status_description = status.get("description") or "Unknown"
+                return {
+                    "status": status_description,
+                    "stdout": result.get("stdout") or "",
+                    "stderr": result.get("stderr") or "",
+                    "compile_output": result.get("compile_output") or "",
+                    "message": result.get("message") or "",
+                    "time": result.get("time"),
+                    "memory": result.get("memory"),
+                }
+        return {"status": "Processing Time Limit", "stdout": "", "stderr": "", "compile_output": "", "message": "The compiler did not finish in time. Please try again."}
+    except HTTPException:
+        raise
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="The C execution service timed out. Please try again.")
+    except httpx.HTTPStatusError as exc:
+        print("Judge0 HTTP error:", exc.response.status_code, exc.response.text[:500])
+        raise HTTPException(status_code=502, detail=f"C execution service returned HTTP {exc.response.status_code}.")
+    except Exception as exc:
+        print("Judge0 execution error:", repr(exc))
+        raise HTTPException(status_code=502, detail="Could not reach the C execution service. Please try again later.")
+
+
+@app.get("/api/coding/problems")
+def coding_list_problems(authorization: Optional[str] = Header(default=None)):
+    get_current_user(authorization)
+    return [_coding_public_problem(problem) for problem in _CODING_PROBLEMS]
+
+
+@app.post("/api/coding/run")
+def coding_run_code(data: CodingRunRequest, authorization: Optional[str] = Header(default=None)):
+    get_current_user(authorization)
+    result = _coding_execute_c(data.source_code, data.stdin or "")
+    return result
+
+
+@app.post("/api/coding/submit")
+def coding_submit_code(data: CodingSubmitRequest, authorization: Optional[str] = Header(default=None)):
+    user = get_current_user(authorization)
+    if not data.source_code or not data.source_code.strip():
+        raise HTTPException(status_code=400, detail="Source code is required.")
+    if len(data.source_code) > 25000:
+        raise HTTPException(status_code=413, detail="Source code is too large (maximum 25 KB).")
+
+    problem = next((item for item in _CODING_PROBLEMS if item["id"] == data.problem_id), None)
+    if problem is None:
+        raise HTTPException(status_code=404, detail="Coding problem not found.")
+
+    # Expected outputs and test input are kept on the backend, not sent by the browser.
+    tests = problem["tests"]
+    def run_one(test):
+        try:
+            result = _coding_execute_c(data.source_code, test["stdin"])
+            expected = str(test["expected"]).strip()
+            actual = str(result.get("stdout") or "").strip()
+            accepted_execution = result.get("status") == "Accepted"
+            passed = accepted_execution and actual == expected
+            return {
+                "passed": passed,
+                "expected": expected,
+                "actual": actual,
+                "status": "Passed" if passed else (result.get("status") or "Wrong Answer"),
+                "stderr": result.get("stderr") or "",
+                "compile_output": result.get("compile_output") or "",
+            }
+        except HTTPException as exc:
+            return {"passed": False, "expected": str(test["expected"]).strip(), "actual": "", "status": f"Runner Error ({exc.status_code})", "stderr": str(exc.detail), "compile_output": ""}
+
+    with _CodingPool(max_workers=3) as pool:
+        raw_results = list(pool.map(run_one, tests))
+
+    results = [dict(case_number=index + 1, **item) for index, item in enumerate(raw_results)]
+    passed_count = sum(1 for item in results if item["passed"])
+    accepted = passed_count == len(tests)
+
+    return {
+        "accepted": accepted,
+        "passed": passed_count,
+        "total": len(tests),
+        "results": results,
+    }

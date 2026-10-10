@@ -19,6 +19,7 @@ import {
   Youtube,
   NotebookTabs,
   ExternalLink,
+  Code2,
 } from 'lucide-react';
 
 import { coursesApi, materialsApi } from '../services/api';
@@ -386,6 +387,24 @@ export default function CourseDetail() {
               <div className="tool-arrow">
                 →
               </div>
+            </Link>
+
+            {/* CODING PRACTICE */}
+
+            <Link
+              to={`/courses/${course.id}/coding-practice`}
+              className="tool-card cyan"
+            >
+              <div className="tool-icon">
+                <Code2 size={25} />
+              </div>
+
+              <div className="tool-content">
+                <h3>Coding Practice</h3>
+                <p>Write C programs, run your code and validate hidden test cases.</p>
+              </div>
+
+              <div className="tool-arrow">→</div>
             </Link>
 
             {/* PROGRESS */}

@@ -11,6 +11,7 @@ import Completed from './pages/Completed';
 import CourseDetail from './pages/CourseDetail';
 import Tutor from './pages/Tutor';
 import Quiz from './pages/Quiz';
+import CodingPractice from './pages/CodingPractice';
 import ProgressPage from './pages/Progress';
 
 import Resources from './pages/Resources';
@@ -95,6 +96,16 @@ export default function App() {
         <Route
           path="/courses/:courseId/progress"
           element={<RequireAuth><ProgressPage /></RequireAuth>}
+        />
+
+        {/* CODING PRACTICE */}
+        <Route
+          path="/coding-practice"
+          element={<RequireAuth><CodingPractice /></RequireAuth>}
+        />
+        <Route
+          path="/courses/:courseId/coding-practice"
+          element={<RequireAuth><CodingPractice /></RequireAuth>}
         />
 
       </Routes>

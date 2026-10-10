@@ -286,6 +286,20 @@ export const progressApi = {
     ),
 };
 
+export const codingApi = {
+  problems: () => request<any[]>('/api/coding/problems'),
+  run: (data: { source_code: string; stdin?: string }) =>
+    request<any>('/api/coding/run', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  submit: (data: { problem_id: string; source_code: string }) =>
+    request<any>('/api/coding/submit', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
 // ============================================================
 // DEFAULT EXPORT
 // ============================================================
@@ -297,4 +311,5 @@ export default {
   tutorApi,
   quizApi,
   progressApi,
+  codingApi,
 };
