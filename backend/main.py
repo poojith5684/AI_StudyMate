@@ -63,6 +63,11 @@ SUPABASE_SECRET_KEY = (
     or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 )
 
+SUPABASE_PUBLISHABLE_KEY = (
+    os.getenv("SUPABASE_PUBLISHABLE_KEY")
+    or os.getenv("SUPABASE_ANON_KEY")
+)
+
 
 # ============================================================
 # AI CLIENT
@@ -958,9 +963,9 @@ def create_course(
         default=None
     ),
 ):
-    user = get_current_user(
-        authorization
-    )
+    # Authenticate the user and obtain their access token.
+    user = get_current_user(authorization)
+    token = extract_bearer_token(authorization)
 
     title = data.title.strip()
 
@@ -970,32 +975,34 @@ def create_course(
             detail="Course title is required.",
         )
 
+    if not SUPABASE_PUBLISHABLE_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase publishable key is not configured.",
+        )
+
     course_data = {
         "user_id": str(user.id),
         "title": title,
-        "description": (
-            data.description or ""
-        ).strip(),
-        "subject": (
-            data.subject or "General"
-        ).strip() or "General",
+        "description": (data.description or "").strip(),
+        "subject": (data.subject or "General").strip() or "General",
     }
 
     require_supabase()
 
     try:
-        # Direct Supabase REST request using the
-        # server-side secret key. This avoids any
-        # user-session/JWT state affecting the insert.
         rest_url = (
             SUPABASE_URL.strip().rstrip("/")
             + "/rest/v1/courses"
         )
 
+        # Use publishable key + authenticated user's token.
+        # Supabase RLS checks that auth.uid() matches user_id.
         response = httpx.post(
             rest_url,
             headers={
-                "apikey": SUPABASE_SECRET_KEY.strip(),
+                "apikey": SUPABASE_PUBLISHABLE_KEY.strip(),
+                "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
                 "Prefer": "return=representation",
@@ -1010,7 +1017,6 @@ def create_course(
                 response.status_code,
                 response.text[:1000],
             )
-
             raise HTTPException(
                 status_code=502,
                 detail=(
@@ -1027,9 +1033,7 @@ def create_course(
                 detail="Course was not created.",
             )
 
-        created_course = normalize_course(
-            rows[0]
-        )
+        created_course = normalize_course(rows[0])
 
         print(
             "Course created successfully:",
@@ -1042,11 +1046,7 @@ def create_course(
         raise
 
     except Exception as e:
-        print(
-            "Create course error:",
-            repr(e),
-        )
-
+        print("Create course error:", repr(e))
         raise HTTPException(
             status_code=500,
             detail="Failed to create course.",
