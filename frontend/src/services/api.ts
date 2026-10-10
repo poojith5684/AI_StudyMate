@@ -289,12 +289,12 @@ export const progressApi = {
 export const codingApi = {
   problems: (courseId?: string) =>
     request<any[]>(`/api/coding/problems${courseId ? `?course_id=${encodeURIComponent(courseId)}` : ''}`),
-  run: (data: { source_code: string; stdin?: string; course_id?: string; language?: 'c' | 'python' }) =>
+  run: (data: { source_code: string; stdin?: string; course_id?: string; language?: 'c' | 'python' | 'java' | 'sql'; problem_id?: string }) =>
     request<any>('/api/coding/run', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  submit: (data: { problem_id: string; source_code: string; course_id?: string; language?: 'c' | 'python' }) =>
+  submit: (data: { problem_id: string; source_code: string; course_id?: string; language?: 'c' | 'python' | 'java' | 'sql' }) =>
     request<any>('/api/coding/submit', {
       method: 'POST',
       body: JSON.stringify(data),

@@ -41,7 +41,7 @@ type Problem = {
   constraints: string[];
   starter_code: string;
   tags: string[];
-  language: 'c' | 'python';
+  language: 'c' | 'python' | 'java' | 'sql';
   track: 'basics' | 'dsa';
 };
 
@@ -208,7 +208,11 @@ export default function CodingPractice() {
   const isBusy = busy !== '';
   const codeLanguage = activeProblem?.language ?? problems[0]?.language ?? 'c';
   const isPython = codeLanguage === 'python';
-  const codeLanguageLabel = isPython ? 'Python 3' : 'C · GCC';
+  const isJava = codeLanguage === 'java';
+  const isSql = codeLanguage === 'sql';
+  const codeLanguageLabel = isPython ? 'Python 3' : isJava ? 'Java' : isSql ? 'SQL · SQLite' : 'C · GCC';
+  const codeFileName = isPython ? 'solution.py' : isJava ? 'Main.java' : isSql ? 'query.sql' : 'solution.c';
+  const editorLanguageLabel = isPython ? 'Python source editor' : isJava ? 'Java source editor' : isSql ? 'SQL query editor' : 'C source editor';
   const problemListTitle = activeProblem?.track === 'dsa' || problems[0]?.track === 'dsa'
     ? 'DSA problems'
     : (isPython ? 'Python problems' : 'C problems');
@@ -249,6 +253,7 @@ export default function CodingPractice() {
         stdin: customInput,
         course_id: courseId,
         language: activeProblem.language,
+        problem_id: activeProblem.id,
       });
       setRunResult(result as RunResult);
     } catch (err) {
@@ -520,7 +525,7 @@ export default function CodingPractice() {
 
               <section className="cp-editor-panel">
                 <div className="cp-editor-header">
-                  <div className="cp-editor-title"><Code2 size={17} /><strong>Solution</strong><span className="cp-file-tab">{isPython ? 'solution.py' : 'solution.c'}</span></div>
+                  <div className="cp-editor-title"><Code2 size={17} /><strong>Solution</strong><span className="cp-file-tab">{codeFileName}</span></div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button type="button" className="cp-reset-button" onClick={() => void copyCode()} disabled={isBusy} title="Copy code">
                       <Copy size={14} /> {copyLabel}
@@ -531,7 +536,7 @@ export default function CodingPractice() {
                   </div>
                 </div>
                 <div className="cp-editor-caption">
-                  <span><span className="cp-live-dot" /> {isPython ? 'Python source editor' : 'C source editor'}</span>
+                  <span><span className="cp-live-dot" /> {editorLanguageLabel}</span>
                   <span>Ctrl+Enter: Run · Ctrl+Shift+Enter: Validate</span>
                 </div>
                 <textarea
@@ -580,15 +585,25 @@ export default function CodingPractice() {
 
                 {resultTab === 'run' ? (
                   <div className="cp-run-output">
-                    <label htmlFor="cp-custom-input">CUSTOM INPUT <span>stdin</span></label>
-                    <textarea
-                      id="cp-custom-input"
-                      className="cp-custom-input"
-                      value={customInput}
-                      onChange={(event) => setCustomInput(event.target.value)}
-                      spellCheck={false}
-                      aria-label="Custom standard input"
-                    />
+                    {isSql ? (
+                      <div className="cp-console-placeholder">
+                        <Terminal size={19} />
+                        <p>SQL uses the sample tables listed in this problem.</p>
+                        <span>Write a SELECT query, then Run Code or Validate Test Cases.</span>
+                      </div>
+                    ) : (
+                      <>
+                        <label htmlFor="cp-custom-input">CUSTOM INPUT <span>stdin</span></label>
+                        <textarea
+                          id="cp-custom-input"
+                          className="cp-custom-input"
+                          value={customInput}
+                          onChange={(event) => setCustomInput(event.target.value)}
+                          spellCheck={false}
+                          aria-label="Custom standard input"
+                        />
+                      </>
+                    )}
                     {runResult ? (
                       <div className="cp-output-result">
                         <div className="cp-output-status">

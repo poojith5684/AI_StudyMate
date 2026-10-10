@@ -2712,6 +2712,7 @@ class CodingRunRequest(BaseModel):
     stdin: str = ""
     course_id: Optional[str] = None
     language: Optional[str] = None
+    problem_id: Optional[str] = None
 
 
 class CodingSubmitRequest(BaseModel):
@@ -2918,6 +2919,96 @@ _PYTHON_DSA_PROBLEMS = [
 ]
 
 
+# JAVA_SQL_CODING_EXTENSIONS_V1
+
+_JAVA_BASIC_PROBLEMS = [
+    _cp_problem("java-sum-two", "Sum of Two Numbers", "Easy", "Read two integers and print their sum.",
+        "import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    long a = sc.nextLong();\n    long b = sc.nextLong();\n    // Print the sum of a and b\n  }\n}\n", ["Basics", "Arithmetic"], [("3 5\n", "8"), ("-2 7\n", "5"), ("100 250\n", "350")]),
+    _cp_problem("java-even-odd", "Even or Odd", "Easy", "Read an integer and print Even if divisible by 2; otherwise print Odd.",
+        "import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int n = sc.nextInt();\n    // Print Even or Odd\n  }\n}\n", ["Conditions", "Modulo"], [("4\n", "Even"), ("7\n", "Odd"), ("0\n", "Even")]),
+    _cp_problem("java-largest-three", "Largest of Three Numbers", "Easy", "Read three integers and print the largest.",
+        "import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int a = sc.nextInt(), b = sc.nextInt(), c = sc.nextInt();\n    // Print the largest value\n  }\n}\n", ["Conditions", "Comparisons"], [("3 9 5\n", "9"), ("-2 -7 -4\n", "-2"), ("8 8 2\n", "8")]),
+    _cp_problem("java-factorial", "Factorial", "Easy", "Read a non-negative integer N and print N factorial. 0 factorial is 1.",
+        "import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int n = sc.nextInt();\n    long answer = 1;\n    // Calculate factorial and print answer\n  }\n}\n", ["Loops", "Math"], [("5\n", "120"), ("0\n", "1"), ("1\n", "1")]),
+    _cp_problem("java-prime", "Prime Number Check", "Medium", "Print Prime for a prime integer; otherwise print Not Prime. Values below 2 are not prime.",
+        "import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int n = sc.nextInt();\n    // Check primality and print Prime or Not Prime\n  }\n}\n", ["Loops", "Number Theory"], [("7\n", "Prime"), ("1\n", "Not Prime"), ("12\n", "Not Prime"), ("2\n", "Prime")]),
+    _cp_problem("java-reverse-number", "Reverse a Number", "Easy", "Read a non-negative integer and print its digits reversed.",
+        "import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    long n = sc.nextLong();\n    long reversed = 0;\n    // Reverse the digits and print reversed\n  }\n}\n", ["Loops", "Digits"], [("1234\n", "4321"), ("500\n", "5"), ("0\n", "0")]),
+    _cp_problem("java-array-sum", "Sum of Array Elements", "Medium", "Read N followed by N integers and print their sum.",
+        "import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int n = sc.nextInt();\n    long sum = 0;\n    // Read n elements, add them to sum, and print sum\n  }\n}\n", ["Arrays", "Loops"], [("5\n1 2 3 4 5\n", "15"), ("4\n-1 2 -3 4\n", "2"), ("1\n42\n", "42")]),
+]
+
+_JAVA_DSA_PROBLEMS = [
+    _cp_problem("java-dsa-linear-search", "Linear Search", "Easy", "Read N, N integers and a target. Print the first zero-based index or -1.",
+        "import java.util.*;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int n = sc.nextInt(); int[] a = new int[n];\n    for (int i=0; i<n; i++) a[i] = sc.nextInt();\n    int target = sc.nextInt();\n    // Find and print the first matching index or -1\n  }\n}\n", ["Arrays", "Searching"], [("5\n2 4 6 8 10\n6\n", "2"), ("4\n1 3 5 7\n2\n", "-1"), ("1\n9\n9\n", "0")]),
+    _cp_problem("java-dsa-binary-search", "Binary Search", "Medium", "The input array is sorted. Print the target's zero-based index or -1.",
+        "import java.util.*;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int n = sc.nextInt(); int[] a = new int[n];\n    for (int i=0; i<n; i++) a[i] = sc.nextInt();\n    int target = sc.nextInt();\n    // Implement binary search\n  }\n}\n", ["Arrays", "Binary Search"], [("5\n1 3 5 7 9\n7\n", "3"), ("5\n1 3 5 7 9\n2\n", "-1"), ("1\n4\n4\n", "0")]),
+    _cp_problem("java-dsa-bubble-sort", "Bubble Sort", "Medium", "Read N integers, sort ascending using bubble sort, and print values separated by spaces.",
+        "import java.util.*;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int n = sc.nextInt(); int[] a = new int[n];\n    for (int i=0; i<n; i++) a[i] = sc.nextInt();\n    // Implement bubble sort and print the array\n  }\n}\n", ["Sorting", "Arrays"], [("5\n5 1 4 2 8\n", "1 2 4 5 8"), ("4\n-1 3 0 3\n", "-1 0 3 3"), ("1\n7\n", "7")]),
+    _cp_problem("java-dsa-second-largest", "Second Largest Distinct Element", "Medium", "Print the second-largest distinct array value, or -1 if none exists.",
+        "import java.util.*;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int n = sc.nextInt(); int[] a = new int[n];\n    for (int i=0; i<n; i++) a[i] = sc.nextInt();\n    // Find the second-largest distinct element or -1\n  }\n}\n", ["Arrays", "Sorting"], [("5\n4 1 7 7 3\n", "4"), ("3\n5 5 5\n", "-1"), ("4\n-2 -1 -5 -3\n", "-2")]),
+    _cp_problem("java-dsa-max-subarray", "Maximum Subarray Sum", "Hard", "Print the maximum sum of any non-empty contiguous subarray.",
+        "import java.util.*;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n    int n = sc.nextInt(); int[] a = new int[n];\n    for (int i=0; i<n; i++) a[i] = sc.nextInt();\n    // Use Kadane's algorithm and print the maximum sum\n  }\n}\n", ["Arrays", "Kadane's Algorithm"], [("5\n-2 1 -3 4 -1\n", "4"), ("3\n-5 -2 -8\n", "-2"), ("5\n1 2 3 -2 5\n", "9")]),
+]
+
+_SQL_BASIC_PROBLEMS = [
+    {
+        "id": "sql-list-employees", "title": "List Employee Names", "difficulty": "Easy",
+        "description": "Return employee names in alphabetical order. The employees table has columns id, name, department and salary.",
+        "examples": [{"input": "employees(id, name, department, salary)", "output": "Asha\nBala\nCharan\nDivya"}],
+        "constraints": ["Use a SELECT query.", "Sort names alphabetically."],
+        "starter_code": "SELECT name\nFROM employees\n-- Add sorting here; finish the query\n;",
+        "tags": ["SELECT", "ORDER BY"],
+        "tests": [{"stdin": "CREATE TABLE employees(id INTEGER, name TEXT, department TEXT, salary INTEGER); INSERT INTO employees VALUES (1,'Asha','IT',65000),(2,'Bala','HR',45000),(3,'Charan','IT',80000),(4,'Divya','Sales',55000);", "expected": "Asha\nBala\nCharan\nDivya"}],
+    },
+    {
+        "id": "sql-filter-salary", "title": "Employees Above a Salary", "difficulty": "Easy",
+        "description": "Select names of employees whose salary is greater than 55000. Return names in alphabetical order.",
+        "examples": [{"input": "employees(id, name, department, salary)", "output": "Asha\nCharan"}],
+        "constraints": ["Salary must be strictly greater than 55000.", "Sort names alphabetically."],
+        "starter_code": "SELECT name\nFROM employees\n-- Add the WHERE condition and sorting\n;",
+        "tags": ["WHERE", "ORDER BY"],
+        "tests": [{"stdin": "CREATE TABLE employees(id INTEGER, name TEXT, department TEXT, salary INTEGER); INSERT INTO employees VALUES (1,'Asha','IT',65000),(2,'Bala','HR',45000),(3,'Charan','IT',80000),(4,'Divya','Sales',55000);", "expected": "Asha\nCharan"}],
+    },
+    {
+        "id": "sql-count-by-department", "title": "Count Employees by Department", "difficulty": "Medium",
+        "description": "For every department, show the department name and employee count, ordered alphabetically by department.",
+        "examples": [{"input": "employees(id, name, department, salary)", "output": "HR | 1\nIT | 2\nSales | 1"}],
+        "constraints": ["Return department and count columns.", "Group by department."],
+        "starter_code": "SELECT department, COUNT(*) AS employee_count\nFROM employees\n-- Group and order the results\n;",
+        "tags": ["GROUP BY", "COUNT"],
+        "tests": [{"stdin": "CREATE TABLE employees(id INTEGER, name TEXT, department TEXT, salary INTEGER); INSERT INTO employees VALUES (1,'Asha','IT',65000),(2,'Bala','HR',45000),(3,'Charan','IT',80000),(4,'Divya','Sales',55000);", "expected": "HR | 1\nIT | 2\nSales | 1"}],
+    },
+    {
+        "id": "sql-second-highest-salary", "title": "Second Highest Salary", "difficulty": "Medium",
+        "description": "Return the second-highest DISTINCT salary from the employees table. The result should be one integer.",
+        "examples": [{"input": "employees(id, name, department, salary)", "output": "65000"}],
+        "constraints": ["Do not simply return the maximum salary.", "Use a query that handles duplicate salaries."],
+        "starter_code": "-- Return the second-highest distinct salary\nSELECT ...;",
+        "tags": ["Subquery", "MAX"],
+        "tests": [{"stdin": "CREATE TABLE employees(id INTEGER, name TEXT, department TEXT, salary INTEGER); INSERT INTO employees VALUES (1,'Asha','IT',65000),(2,'Bala','HR',45000),(3,'Charan','IT',80000),(4,'Divya','Sales',55000),(5,'Esha','IT',65000);", "expected": "65000"}],
+    },
+    {
+        "id": "sql-customer-orders-join", "title": "Customer Orders Join", "difficulty": "Medium",
+        "description": "List customer names and order amounts by joining customers and orders. Keep the order order_id ascending.",
+        "examples": [{"input": "customers(id, name) and orders(id, customer_id, amount)", "output": "Asha | 250\nBala | 400\nAsha | 100"}],
+        "constraints": ["Join orders.customer_id to customers.id.", "Sort by orders.id ascending."],
+        "starter_code": "SELECT customers.name, orders.amount\nFROM customers\n-- Add the JOIN and ordering\n;",
+        "tags": ["JOIN", "ORDER BY"],
+        "tests": [{"stdin": "CREATE TABLE customers(id INTEGER, name TEXT); CREATE TABLE orders(id INTEGER, customer_id INTEGER, amount INTEGER); INSERT INTO customers VALUES (1,'Asha'),(2,'Bala'); INSERT INTO orders VALUES (1,1,250),(2,2,400),(3,1,100);", "expected": "Asha | 250\nBala | 400\nAsha | 100"}],
+    },
+    {
+        "id": "sql-department-max-salary", "title": "Highest Salary by Department", "difficulty": "Medium",
+        "description": "Show each department and its highest salary, ordered by department name.",
+        "examples": [{"input": "employees(id, name, department, salary)", "output": "HR | 45000\nIT | 80000\nSales | 55000"}],
+        "constraints": ["Return department and maximum salary.", "Use GROUP BY."],
+        "starter_code": "SELECT department, MAX(salary) AS max_salary\nFROM employees\n-- Group and order the results\n;",
+        "tags": ["GROUP BY", "MAX"],
+        "tests": [{"stdin": "CREATE TABLE employees(id INTEGER, name TEXT, department TEXT, salary INTEGER); INSERT INTO employees VALUES (1,'Asha','IT',65000),(2,'Bala','HR',45000),(3,'Charan','IT',80000),(4,'Divya','Sales',55000);", "expected": "HR | 45000\nIT | 80000\nSales | 55000"}],
+    },
+]
+
+
 def _coding_public_problem(problem, language, track):
     return {
         key: problem[key]
@@ -2926,27 +3017,43 @@ def _coding_public_problem(problem, language, track):
 
 
 def _coding_profile(authorization, course_id, language_hint=None):
-    # All course-specific requests are scoped to the authenticated user's own course.
+    # Course metadata is authoritative for routes opened from a specific course.
     user = get_current_user(authorization)
     course = {}
     if course_id:
         course = get_user_course(course_id, str(user.id), extract_bearer_token(authorization))
 
     text = " ".join(str(course.get(key) or "") for key in ("title", "subject", "description")).lower()
+    is_sql = bool(_coding_re.search(r"\bsql\b|\bdatabase\b|\bdbms\b|\bmysql\b|\bpostgres(?:ql)?\b|\bsqlite\b|structured query language", text))
+    is_java = bool(_coding_re.search(r"\bjava\b|core java|object[- ]oriented programming", text))
     is_python = bool(_coding_re.search(r"\bpython\b|\bpy programming\b", text))
     is_dsa = any(term in text for term in ("dsa", "data structure", "data structures", "algorithm", "algorithms"))
 
     if course_id:
-        # Course metadata is authoritative; the client cannot force another language.
-        language = "python" if is_python else "c"
+        if is_sql:
+            language = "sql"
+        elif is_java:
+            language = "java"
+        elif is_python:
+            language = "python"
+        else:
+            language = "c"
     else:
-        language = "python" if str(language_hint or "").lower() in ("py", "python") else "c"
+        language = str(language_hint or "c").lower()
+        if language not in ("c", "python", "java", "sql"):
+            language = "c"
 
     track = "dsa" if is_dsa else "basics"
     return {"language": language, "track": track, "course_title": str(course.get("title") or "Coding Practice")}
 
 
 def _coding_problem_bank(profile):
+    if profile["language"] == "sql":
+        return _SQL_BASIC_PROBLEMS
+    if profile["language"] == "java" and profile["track"] == "dsa":
+        return _JAVA_DSA_PROBLEMS
+    if profile["language"] == "java":
+        return _JAVA_BASIC_PROBLEMS
     if profile["language"] == "python" and profile["track"] == "dsa":
         return _PYTHON_DSA_PROBLEMS
     if profile["language"] == "python":
@@ -2954,6 +3061,8 @@ def _coding_problem_bank(profile):
     if profile["track"] == "dsa":
         return _C_DSA_PROBLEMS
     return _C_BASIC_PROBLEMS
+
+
 
 
 def _coding_judge_headers():
@@ -2974,13 +3083,14 @@ def _coding_execute(source_code: str, stdin: str, language: str = "c"):
 
     judge_url = os.getenv("JUDGE0_BASE_URL", "https://ce.judge0.com").rstrip("/")
     headers = _coding_judge_headers()
+    env_name = {"c": "JUDGE0_C_LANGUAGE_ID", "python": "JUDGE0_PYTHON_LANGUAGE_ID", "java": "JUDGE0_JAVA_LANGUAGE_ID"}.get(language)
+    default_id = {"c": "103", "python": "71", "java": "62"}.get(language)
+    if not env_name or not default_id:
+        raise HTTPException(status_code=400, detail="Unsupported code language for this runner.")
     try:
-        if language == "python":
-            language_id = int(os.getenv("JUDGE0_PYTHON_LANGUAGE_ID", "71"))
-        else:
-            language_id = int(os.getenv("JUDGE0_C_LANGUAGE_ID", "103"))
+        language_id = int(os.getenv(env_name, default_id))
     except ValueError:
-        raise HTTPException(status_code=500, detail="Judge0 language ID configuration must be numeric.")
+        raise HTTPException(status_code=500, detail=f"{env_name} must be a numeric Judge0 language ID.")
 
     submission_payload = {
         "source_code": source_code,
@@ -2999,7 +3109,7 @@ def _coding_execute(source_code: str, stdin: str, language: str = "c"):
             timeout=15.0,
         )
         if created.status_code in (401, 403):
-            raise HTTPException(status_code=502, detail="The C/Python execution service requires authorization. Configure JUDGE0_AUTH_TOKEN in the backend environment.")
+            raise HTTPException(status_code=502, detail="The code execution service requires authorization. Configure JUDGE0_AUTH_TOKEN in the backend environment.")
         created.raise_for_status()
         token = (created.json() or {}).get("token")
         if not token:
@@ -3030,7 +3140,7 @@ def _coding_execute(source_code: str, stdin: str, language: str = "c"):
                     "time": result.get("time"),
                     "memory": result.get("memory"),
                 }
-        return {"status": "Processing Time Limit", "stdout": "", "stderr": "", "compile_output": "", "message": "The compiler did not finish in time. Please try again."}
+        return {"status": "Processing Time Limit", "stdout": "", "stderr": "", "compile_output": "", "message": "The code runner did not finish in time. Please try again."}
     except HTTPException:
         raise
     except httpx.TimeoutException:
@@ -3039,8 +3149,54 @@ def _coding_execute(source_code: str, stdin: str, language: str = "c"):
         print("Judge0 HTTP error:", exc.response.status_code, exc.response.text[:500])
         raise HTTPException(status_code=502, detail=f"Code execution service returned HTTP {exc.response.status_code}.")
     except Exception as exc:
-        print("Judge0 execution error:", repr(exc))
+        print("Code execution error:", repr(exc))
         raise HTTPException(status_code=502, detail="Could not reach the code execution service. Please try again later.")
+
+
+def _coding_execute_sql(source_code: str, setup_sql: str):
+    """Run one read-only SQL query over a server-provided in-memory SQLite fixture."""
+    import sqlite3
+    from time import monotonic
+
+    query = (source_code or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Enter an SQL query first.")
+    if len(query) > 10000:
+        raise HTTPException(status_code=413, detail="SQL query is too large (maximum 10 KB).")
+    if not _coding_re.match(r"^(select|with)\b", query, _coding_re.IGNORECASE):
+        return {"status": "Rejected", "stdout": "", "stderr": "Only read-only SELECT queries (including WITH queries) are allowed.", "compile_output": "", "message": "Start the query with SELECT or WITH.", "time": None, "memory": None}
+
+    db = sqlite3.connect(":memory:")
+    steps = [0]
+    started = monotonic()
+    try:
+        db.executescript(setup_sql)
+        db.execute("PRAGMA query_only = ON")
+
+        def authorize(action, arg1, arg2, database_name, trigger_name):
+            allowed = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION}
+            recursive_action = getattr(sqlite3, "SQLITE_RECURSIVE", None)
+            if recursive_action is not None:
+                allowed.add(recursive_action)
+            return sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY
+
+        def time_guard():
+            steps[0] += 1
+            return 1 if steps[0] > 2000 else 0
+
+        db.set_authorizer(authorize)
+        db.set_progress_handler(time_guard, 1000)
+        cursor = db.execute(query)
+        rows = cursor.fetchmany(1001)
+        if len(rows) > 1000:
+            return {"status": "Output Limit Exceeded", "stdout": "", "stderr": "Query returned more than 1000 rows.", "compile_output": "", "message": "Limit the result set to 1000 rows.", "time": round(monotonic() - started, 3), "memory": None}
+        output = "\n".join(" | ".join("NULL" if value is None else str(value) for value in row) for row in rows)
+        return {"status": "Accepted", "stdout": output, "stderr": "", "compile_output": "", "message": "Query executed against the sample database.", "time": round(monotonic() - started, 3), "memory": None}
+    except sqlite3.Error as exc:
+        message = str(exc)
+        return {"status": "Runtime Error", "stdout": "", "stderr": message, "compile_output": "", "message": "Check SQL syntax, table names and columns.", "time": round(monotonic() - started, 3), "memory": None}
+    finally:
+        db.close()
 
 
 @app.get("/api/coding/problems")
@@ -3057,6 +3213,12 @@ def coding_list_problems(
 @app.post("/api/coding/run")
 def coding_run_code(data: CodingRunRequest, authorization: Optional[str] = Header(default=None)):
     profile = _coding_profile(authorization, data.course_id, data.language)
+    if profile["language"] == "sql":
+        bank = _coding_problem_bank(profile)
+        problem = next((item for item in bank if item["id"] == data.problem_id), None)
+        if problem is None:
+            raise HTTPException(status_code=400, detail="Choose a valid SQL problem before running your query.")
+        return _coding_execute_sql(data.source_code, problem["tests"][0]["stdin"])
     return _coding_execute(data.source_code, data.stdin or "", profile["language"])
 
 
@@ -3075,7 +3237,10 @@ def coding_submit_code(data: CodingSubmitRequest, authorization: Optional[str] =
 
     def run_one(test):
         try:
-            result = _coding_execute(data.source_code, test["stdin"], profile["language"])
+            if profile["language"] == "sql":
+                result = _coding_execute_sql(data.source_code, test["stdin"])
+            else:
+                result = _coding_execute(data.source_code, test["stdin"], profile["language"])
             expected = str(test["expected"]).strip()
             actual = str(result.get("stdout") or "").strip()
             passed = result.get("status") == "Accepted" and actual == expected
