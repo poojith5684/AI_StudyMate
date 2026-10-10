@@ -586,55 +586,57 @@ def normalize_course(
 
 def get_user_courses(
     user_id: str,
+    access_token: str,
 ):
-    """
-    Load only courses belonging to
-    the authenticated user.
-    """
-
     require_supabase()
 
+    if not SUPABASE_PUBLISHABLE_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase publishable key is not configured.",
+        )
+
     try:
-
-        response = (
-            db_client
-            .table("courses")
-            .select("*")
-            .eq(
-                "user_id",
-                user_id,
-            )
-            .order(
-                "created_at",
-                desc=True,
-            )
-            .execute()
+        response = httpx.get(
+            SUPABASE_URL.strip().rstrip("/") + "/rest/v1/courses",
+            headers={
+                "apikey": SUPABASE_PUBLISHABLE_KEY.strip(),
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+            },
+            params={
+                "select": "*",
+                "user_id": f"eq.{user_id}",
+                "order": "created_at.desc",
+            },
+            timeout=20.0,
         )
 
-        rows = (
-            response.data
-            or []
-        )
+        if response.status_code >= 400:
+            print(
+                "Get courses REST error:",
+                response.status_code,
+                response.text[:1000],
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to load courses from Supabase.",
+            )
 
         return [
             normalize_course(row)
-            for row in rows
+            for row in (response.json() or [])
         ]
 
+    except HTTPException:
+        raise
+
     except Exception as e:
-
-        print(
-            "Get courses error:",
-            repr(e),
-        )
-
+        print("Get courses error:", repr(e))
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Failed to load courses."
-            ),
+            detail="Failed to load courses.",
         )
-
 
 # ============================================================
 # GET ONE USER COURSE
@@ -643,67 +645,63 @@ def get_user_courses(
 def get_user_course(
     course_id: str,
     user_id: str,
+    access_token: str,
 ):
-    """
-    Return a course only if it belongs
-    to the current authenticated user.
-    """
-
     require_supabase()
 
+    if not SUPABASE_PUBLISHABLE_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase publishable key is not configured.",
+        )
+
     try:
-
-        response = (
-            db_client
-            .table("courses")
-            .select("*")
-            .eq(
-                "id",
-                course_id,
-            )
-            .eq(
-                "user_id",
-                user_id,
-            )
-            .limit(1)
-            .execute()
+        response = httpx.get(
+            SUPABASE_URL.strip().rstrip("/") + "/rest/v1/courses",
+            headers={
+                "apikey": SUPABASE_PUBLISHABLE_KEY.strip(),
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+            },
+            params={
+                "select": "*",
+                "id": f"eq.{course_id}",
+                "user_id": f"eq.{user_id}",
+                "limit": "1",
+            },
+            timeout=20.0,
         )
 
-        rows = (
-            response.data
-            or []
-        )
+        if response.status_code >= 400:
+            print(
+                "Get course REST error:",
+                response.status_code,
+                response.text[:1000],
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to load course from Supabase.",
+            )
+
+        rows = response.json() or []
 
         if not rows:
-
             raise HTTPException(
                 status_code=404,
-                detail=(
-                    "Course not found."
-                ),
+                detail="Course not found.",
             )
 
-        return normalize_course(
-            rows[0]
-        )
+        return normalize_course(rows[0])
 
     except HTTPException:
         raise
 
     except Exception as e:
-
-        print(
-            "Get course error:",
-            repr(e),
-        )
-
+        print("Get course error:", repr(e))
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Failed to load course."
-            ),
+            detail="Failed to load course.",
         )
-
 
 # ============================================================
 # PERSIST PROGRESS
@@ -944,9 +942,8 @@ def get_courses(
     )
 
     return get_user_courses(
-        str(
-            user.id
-        )
+        str(user.id),
+        extract_bearer_token(authorization),
     )
 
 
@@ -1071,11 +1068,10 @@ def get_course(
     )
 
     return get_user_course(
-        course_id,
-        str(
-            user.id
-        ),
-    )
+            course_id,
+            str(user.id),
+            extract_bearer_token(authorization),
+        )
 
 
 # ============================================================
@@ -1102,9 +1098,10 @@ def delete_course(
 
     # Verify ownership.
     course = get_user_course(
-        course_id,
-        user_id,
-    )
+            course_id,
+            user_id,
+            extract_bearer_token(authorization),
+        )
 
     try:
 
@@ -1188,9 +1185,10 @@ def update_course_progress(
     )
 
     course = get_user_course(
-        course_id,
-        user_id,
-    )
+            course_id,
+            user_id,
+            extract_bearer_token(authorization),
+        )
 
     progress = max(
         0,
@@ -1246,9 +1244,8 @@ def get_progress(
     )
 
     courses = get_user_courses(
-        str(
-            user.id
-        )
+        str(user.id),
+        extract_bearer_token(authorization),
     )
 
     total_courses = len(
@@ -1305,11 +1302,10 @@ def get_course_progress(
     )
 
     course = get_user_course(
-        course_id,
-        str(
-            user.id
-        ),
-    )
+            course_id,
+            str(user.id),
+            extract_bearer_token(authorization),
+        )
 
     course_materials = [
         material
@@ -1358,11 +1354,10 @@ def progress_recommendations(
     )
 
     course = get_user_course(
-        course_id,
-        str(
-            user.id
-        ),
-    )
+            course_id,
+            str(user.id),
+            extract_bearer_token(authorization),
+        )
 
     progress = course[
         "progress"
@@ -1470,11 +1465,10 @@ def get_course_materials(
     )
 
     get_user_course(
-        course_id,
-        str(
-            user.id
-        ),
-    )
+            course_id,
+            str(user.id),
+            extract_bearer_token(authorization),
+        )
 
     return [
 
@@ -1517,9 +1511,8 @@ def create_material(
 
         get_user_course(
             course_id,
-            str(
-                user.id
-            ),
+            str(user.id),
+            extract_bearer_token(authorization),
         )
 
     material = {
@@ -1670,11 +1663,10 @@ async def upload_material(
     )
 
     get_user_course(
-        course_id,
-        str(
-            user.id
-        ),
-    )
+            course_id,
+            str(user.id),
+            extract_bearer_token(authorization),
+        )
 
     if not file.filename:
 
@@ -1840,9 +1832,8 @@ def ask_tutor(
 
         course = get_user_course(
             data.course_id,
-            str(
-                user.id
-            ),
+            str(user.id),
+            extract_bearer_token(authorization),
         )
 
     course_title = (
@@ -2226,11 +2217,10 @@ def generate_quiz(
     )
 
     course = get_user_course(
-        data.course_id,
-        str(
-            user.id
-        ),
-    )
+            data.course_id,
+            str(user.id),
+            extract_bearer_token(authorization),
+        )
 
     count = max(
         1,
@@ -2523,6 +2513,7 @@ def submit_quiz(
         course = get_user_course(
             data.course_id,
             user_id,
+            extract_bearer_token(authorization),
         )
 
         old_progress = (
@@ -2592,9 +2583,8 @@ def dashboard(
     )
 
     courses = get_user_courses(
-        str(
-            user.id
-        )
+        str(user.id),
+        extract_bearer_token(authorization),
     )
 
     total_courses = len(
