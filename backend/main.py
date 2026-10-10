@@ -712,56 +712,75 @@ def persist_progress(
     user_id: str,
     progress: int,
     completed: bool,
+    access_token: str,
 ):
-    """
-    Save progress in memory.
+    """Persist quiz/course progress using the authenticated user's token."""
 
-    Also attempts to save progress to Supabase.
-    If optional progress columns do not yet exist,
-    course creation/listing still continues working.
-    """
+    if not SUPABASE_PUBLISHABLE_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase publishable key is not configured.",
+        )
 
-    progress_data[
-        course_id
-    ] = {
+    update_data = {
         "progress": progress,
+        "completed": completed,
         "updated_at": now_iso(),
     }
 
-    if not db_client:
-
-        return
-
     try:
-
-        (
-            db_client
-            .table("courses")
-            .update(
-                {
-                    "progress": progress,
-                    "completed": completed,
-                    "updated_at": now_iso(),
-                }
-            )
-            .eq(
-                "id",
-                course_id,
-            )
-            .eq(
-                "user_id",
-                user_id,
-            )
-            .execute()
+        response = httpx.patch(
+            SUPABASE_URL.strip().rstrip("/") + "/rest/v1/courses",
+            headers={
+                "apikey": SUPABASE_PUBLISHABLE_KEY.strip(),
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Prefer": "return=representation",
+            },
+            params={
+                "id": f"eq.{course_id}",
+                "user_id": f"eq.{user_id}",
+            },
+            json=update_data,
+            timeout=20.0,
         )
+
+        if response.status_code >= 400:
+            print(
+                "Progress save failed:",
+                response.status_code,
+                response.text[:1000],
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Could not save course progress.",
+            )
+
+        rows = response.json() if response.content else []
+
+        if not rows:
+            raise HTTPException(
+                status_code=404,
+                detail="Progress was not saved: course not found.",
+            )
+
+        progress_data[course_id] = {
+            "progress": progress,
+            "updated_at": now_iso(),
+        }
+
+        print("Progress saved:", course_id, progress)
+
+    except HTTPException:
+        raise
 
     except Exception as e:
-
-        print(
-            "Progress database update skipped:",
-            repr(e),
+        print("Progress save error:", repr(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to save course progress.",
         )
-
 
 # ============================================================
 # HOME
@@ -1214,6 +1233,7 @@ def update_course_progress(
         user_id,
         progress,
         completed,
+        extract_bearer_token(authorization),
     )
 
     course["progress"] = (
@@ -2554,6 +2574,7 @@ def submit_quiz(
             user_id,
             new_progress,
             completed,
+            extract_bearer_token(authorization),
         )
 
     return {
