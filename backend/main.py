@@ -1087,79 +1087,84 @@ def delete_course(
         default=None
     ),
 ):
+    user = get_current_user(authorization)
+    token = extract_bearer_token(authorization)
+    user_id = str(user.id)
 
-    user = get_current_user(
-        authorization
-    )
-
-    user_id = str(
-        user.id
-    )
-
-    # Verify ownership.
-    course = get_user_course(
-            course_id,
-            user_id,
-            extract_bearer_token(authorization),
+    if not SUPABASE_PUBLISHABLE_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase publishable key is not configured.",
         )
+
+    # Verify the course belongs to the logged-in user.
+    get_user_course(
+        course_id,
+        user_id,
+        token,
+    )
 
     try:
-
-        (
-            db_client
-            .table("courses")
-            .delete()
-            .eq(
-                "id",
-                course["id"],
-            )
-            .eq(
-                "user_id",
-                user_id,
-            )
-            .execute()
+        response = httpx.delete(
+            SUPABASE_URL.strip().rstrip("/") + "/rest/v1/courses",
+            headers={
+                "apikey": SUPABASE_PUBLISHABLE_KEY.strip(),
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+                "Prefer": "return=representation",
+            },
+            params={
+                "id": f"eq.{course_id}",
+                "user_id": f"eq.{user_id}",
+                "select": "id",
+            },
+            timeout=20.0,
         )
 
-        global materials
+        if response.status_code >= 400:
+            print(
+                "Supabase course delete failed:",
+                response.status_code,
+                response.text[:1000],
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Supabase rejected course deletion.",
+            )
 
+        deleted_rows = response.json() if response.content else []
+
+        if not deleted_rows:
+            raise HTTPException(
+                status_code=404,
+                detail="Course was not deleted or does not belong to this user.",
+            )
+
+        global materials
         materials = [
             material
             for material in materials
-            if str(
-                material.get(
-                    "course_id"
-                )
-            ) != course_id
+            if str(material.get("course_id")) != course_id
         ]
 
-        progress_data.pop(
-            course_id,
-            None,
-        )
+        progress_data.pop(course_id, None)
+
+        print("Course deleted successfully:", course_id)
 
         return {
-
             "success": True,
-
-            "message": (
-                "Course deleted successfully."
-            ),
+            "message": "Course deleted successfully.",
         }
 
+    except HTTPException:
+        raise
+
     except Exception as e:
-
-        print(
-            "Delete course error:",
-            repr(e),
-        )
-
+        print("Delete course error:", repr(e))
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Failed to delete course."
-            ),
+            detail="Failed to delete course.",
         )
-
 
 # ============================================================
 # COURSE PROGRESS - UPDATE
