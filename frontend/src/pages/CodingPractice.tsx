@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -25,6 +30,8 @@ type Difficulty = 'Easy' | 'Medium' | 'Hard';
 type DifficultyFilter = 'All' | Difficulty;
 type StageBusy = 'run' | 'submit' | 'load' | '';
 type ResultTab = 'run' | 'tests';
+type CodingLanguage = 'c' | 'python' | 'java' | 'sql';
+type CodingTrack = 'basics' | 'dsa';
 
 type Example = {
   input: string;
@@ -41,8 +48,8 @@ type Problem = {
   constraints: string[];
   starter_code: string;
   tags: string[];
-  language: 'c' | 'python' | 'java' | 'sql';
-  track: 'basics' | 'dsa';
+  language: CodingLanguage;
+  track: CodingTrack;
 };
 
 type RunResult = {
@@ -117,15 +124,48 @@ function normaliseError(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function getLanguageMeta(language: CodingLanguage) {
+  switch (language) {
+    case 'python':
+      return {
+        name: 'Python',
+        badge: 'Python 3',
+        fileName: 'solution.py',
+        editorLabel: 'Python source editor',
+      };
+    case 'java':
+      return {
+        name: 'Java',
+        badge: 'Java',
+        fileName: 'Main.java',
+        editorLabel: 'Java source editor',
+      };
+    case 'sql':
+      return {
+        name: 'SQL',
+        badge: 'SQL · SQLite',
+        fileName: 'query.sql',
+        editorLabel: 'SQL query editor',
+      };
+    default:
+      return {
+        name: 'C',
+        badge: 'C · GCC',
+        fileName: 'solution.c',
+        editorLabel: 'C source editor',
+      };
+  }
+}
+
 export default function CodingPractice() {
   const { courseId } = useParams<{ courseId?: string }>();
 
   const [problems, setProblems] = useState<Problem[]>([]);
-  const [activeId, setActiveId] = useState('sum-two-numbers');
+  const [activeId, setActiveId] = useState('');
   const [query, setQuery] = useState('');
   const [difficulty, setDifficulty] = useState<DifficultyFilter>('All');
   const [sourceCode, setSourceCode] = useState('');
-  const [customInput, setCustomInput] = useState('3 5');
+  const [customInput, setCustomInput] = useState('');
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
   const [busy, setBusy] = useState<StageBusy>('load');
@@ -142,22 +182,27 @@ export default function CodingPractice() {
     const loadProblems = async () => {
       setBusy('load');
       setError('');
+      setNotice('');
       try {
+        // Passing courseId is essential: the backend uses course metadata
+        // to select C, Python, Java, SQL, and the relevant DSA question bank.
         const data = await codingApi.problems(courseId);
         if (!alive) return;
-
         if (!Array.isArray(data)) {
           throw new Error('The server returned an invalid problems list.');
         }
 
-        setProblems(data as Problem[]);
+        const nextProblems = data as Problem[];
+        setProblems(nextProblems);
         setActiveId((current) =>
-          data.some((problem: Problem) => problem.id === current)
+          nextProblems.some((problem) => problem.id === current)
             ? current
-            : (data[0]?.id || ''),
+            : (nextProblems[0]?.id || ''),
         );
       } catch (err) {
         if (!alive) return;
+        setProblems([]);
+        setActiveId('');
         setError(normaliseError(err, 'Could not load coding problems.'));
       } finally {
         if (alive) setBusy('');
@@ -177,7 +222,6 @@ export default function CodingPractice() {
 
   useEffect(() => {
     if (!activeProblem) return;
-
     setSourceCode(savedCode[activeProblem.id] ?? activeProblem.starter_code ?? '');
     setCustomInput(activeProblem.examples?.[0]?.input ?? '');
     setRunResult(null);
@@ -186,7 +230,7 @@ export default function CodingPractice() {
     setNotice('');
     setResultTab('run');
     setCopyLabel('Copy code');
-  }, [activeProblem?.id]); // Deliberately reset output when changing problems.
+  }, [activeProblem?.id]);
 
   const filteredProblems = useMemo(() => {
     const searchText = query.trim().toLowerCase();
@@ -207,15 +251,14 @@ export default function CodingPractice() {
     : 0;
   const isBusy = busy !== '';
   const codeLanguage = activeProblem?.language ?? problems[0]?.language ?? 'c';
-  const isPython = codeLanguage === 'python';
-  const isJava = codeLanguage === 'java';
+  const track = activeProblem?.track ?? problems[0]?.track ?? 'basics';
+  const languageMeta = getLanguageMeta(codeLanguage);
   const isSql = codeLanguage === 'sql';
-  const codeLanguageLabel = isPython ? 'Python 3' : isJava ? 'Java' : isSql ? 'SQL · SQLite' : 'C · GCC';
-  const codeFileName = isPython ? 'solution.py' : isJava ? 'Main.java' : isSql ? 'query.sql' : 'solution.c';
-  const editorLanguageLabel = isPython ? 'Python source editor' : isJava ? 'Java source editor' : isSql ? 'SQL query editor' : 'C source editor';
-  const problemListTitle = activeProblem?.track === 'dsa' || problems[0]?.track === 'dsa'
-    ? 'DSA problems'
-    : (isPython ? 'Python problems' : 'C problems');
+
+  // Show the actual course language in the sidebar; do not label Java/SQL as C.
+  const problemListTitle = track === 'dsa'
+    ? `${languageMeta.name} DSA problems`
+    : `${languageMeta.name} problems`;
 
   const persistCode = (value: string) => {
     setSourceCode(value);
@@ -289,10 +332,7 @@ export default function CodingPractice() {
       });
       const result = raw as SubmitResult;
 
-      if (
-        typeof result.accepted !== 'boolean' ||
-        !Array.isArray(result.results)
-      ) {
+      if (typeof result.accepted !== 'boolean' || !Array.isArray(result.results)) {
         throw new Error('The server returned an invalid test-validation response.');
       }
 
@@ -354,7 +394,6 @@ export default function CodingPractice() {
       return;
     }
 
-    // Keep indentation when pressing Enter inside the editor.
     if (event.key === 'Enter') {
       const editor = event.currentTarget;
       const start = editor.selectionStart;
@@ -391,7 +430,7 @@ export default function CodingPractice() {
           <div className="cp-brand-name">AI <strong>StudyMate</strong><span>Coding Lab</span></div>
         </div>
         <div className="cp-topbar-right">
-          <span className="cp-language-pill"><span /> {codeLanguageLabel}</span>
+          <span className="cp-language-pill"><span /> {languageMeta.badge}</span>
           <span className="cp-solved-mini"><Trophy size={15} /> {solvedCount}/{problems.length} solved</span>
           <Link className="cp-exit-link" to={courseId ? `/courses/${courseId}` : '/dashboard'}>Exit practice</Link>
         </div>
@@ -432,7 +471,6 @@ export default function CodingPractice() {
             {filteredProblems.map((problem) => {
               const isSolved = solved.includes(problem.id);
               const originalIndex = problems.findIndex((item) => item.id === problem.id);
-
               return (
                 <button
                   key={problem.id}
@@ -488,7 +526,7 @@ export default function CodingPractice() {
               <section className="cp-problem-panel">
                 <div className="cp-problem-title-row">
                   <div>
-                    <div className="cp-section-kicker">PROBLEM {String(problems.findIndex((p) => p.id === activeProblem.id) + 1).padStart(2, '0')}</div>
+                    <div className="cp-section-kicker">PROBLEM {String(problems.findIndex((problem) => problem.id === activeProblem.id) + 1).padStart(2, '0')}</div>
                     <h2>{activeProblem.title}</h2>
                   </div>
                   {solved.includes(activeProblem.id) && (
@@ -498,7 +536,7 @@ export default function CodingPractice() {
                 <div className="cp-meta-row">
                   <span className={`cp-difficulty large ${(activeProblem.difficulty || 'Easy').toLowerCase()}`}>{activeProblem.difficulty}</span>
                   <span><Timer size={14} /> 2 sec time limit</span>
-                  <span><Terminal size={14} /> {codeLanguageLabel}</span>
+                  <span><Terminal size={14} /> {languageMeta.badge}</span>
                 </div>
                 <p className="cp-description">{activeProblem.description}</p>
 
@@ -525,7 +563,7 @@ export default function CodingPractice() {
 
               <section className="cp-editor-panel">
                 <div className="cp-editor-header">
-                  <div className="cp-editor-title"><Code2 size={17} /><strong>Solution</strong><span className="cp-file-tab">{codeFileName}</span></div>
+                  <div className="cp-editor-title"><Code2 size={17} /><strong>Solution</strong><span className="cp-file-tab">{languageMeta.fileName}</span></div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button type="button" className="cp-reset-button" onClick={() => void copyCode()} disabled={isBusy} title="Copy code">
                       <Copy size={14} /> {copyLabel}
@@ -536,12 +574,12 @@ export default function CodingPractice() {
                   </div>
                 </div>
                 <div className="cp-editor-caption">
-                  <span><span className="cp-live-dot" /> {editorLanguageLabel}</span>
+                  <span><span className="cp-live-dot" /> {languageMeta.editorLabel}</span>
                   <span>Ctrl+Enter: Run · Ctrl+Shift+Enter: Validate</span>
                 </div>
                 <textarea
                   className="cp-code-editor"
-                  aria-label="Code editor"
+                  aria-label={`${languageMeta.name} code editor`}
                   spellCheck={false}
                   autoCapitalize="off"
                   autoCorrect="off"
@@ -551,7 +589,7 @@ export default function CodingPractice() {
                   onKeyDown={handleEditorKeyDown}
                 />
                 <div className="cp-runbar">
-                  <div className="cp-runbar-note"><span className="cp-dot-green" /> Code runs in a sandboxed {codeLanguageLabel} environment</div>
+                  <div className="cp-runbar-note"><span className="cp-dot-green" /> Code runs in a sandboxed {languageMeta.badge} environment</div>
                   <div className="cp-action-row">
                     <button type="button" className="cp-run-button" onClick={() => void runCode()} disabled={isBusy}>
                       {busy === 'run' ? <span className="cp-spinner" /> : <Play size={15} fill="currentColor" />}
