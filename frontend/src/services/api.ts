@@ -299,6 +299,21 @@ export const codingApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  progress: (courseId?: string) =>
+    request<any[]>(`/api/coding/progress${courseId ? `?course_id=${encodeURIComponent(courseId)}` : ''}`),
+  saveProgress: (data: {
+    problem_id: string;
+    course_id?: string;
+    language?: 'c' | 'python' | 'java' | 'sql';
+    difficulty?: 'Easy' | 'Medium' | 'Hard';
+    code?: string;
+    solved?: boolean;
+    attempted?: boolean;
+  }) =>
+    request<any>('/api/coding/progress', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 // ============================================================

@@ -82,30 +82,49 @@ type SubmitResult = {
 const SOLVED_KEY = 'ai_studymate_coding_solved_v1';
 const CODE_KEY = 'ai_studymate_coding_code_v1';
 
-function readSolved(): string[] {
+type SavedProgressRecord = {
+  problem_id: string;
+  language?: CodingLanguage;
+  difficulty?: Difficulty;
+  code?: string;
+  solved?: boolean;
+  attempts?: number;
+  updated_at?: string;
+};
+
+function scopedStorageKey(key: string, courseId?: string): string {
+  return `${key}:${courseId || 'general'}`;
+}
+
+function readJsonFromStorage<T>(key: string, fallback: T): T {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(SOLVED_KEY) || '[]');
-    return Array.isArray(value)
-      ? value.filter((item): item is string => typeof item === 'string')
-      : [];
+    const value = localStorage.getItem(key);
+    if (!value) return fallback;
+    return JSON.parse(value) as T;
   } catch {
-    return [];
+    return fallback;
   }
 }
 
-function readSavedCode(): Record<string, string> {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(CODE_KEY) || '{}');
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+function readSolved(courseId?: string): string[] {
+  const scoped = readJsonFromStorage<unknown>(scopedStorageKey(SOLVED_KEY, courseId), null);
+  const legacy = readJsonFromStorage<unknown>(SOLVED_KEY, []);
+  const value = scoped ?? legacy;
+  return Array.isArray(value)
+    ? Array.from(new Set(value.filter((item): item is string => typeof item === 'string')))
+    : [];
+}
 
-    return Object.fromEntries(
-      Object.entries(value).filter(
-        (entry): entry is [string, string] => typeof entry[1] === 'string',
-      ),
-    );
-  } catch {
-    return {};
-  }
+function readSavedCode(courseId?: string): Record<string, string> {
+  const scoped = readJsonFromStorage<unknown>(scopedStorageKey(CODE_KEY, courseId), null);
+  const legacy = readJsonFromStorage<unknown>(CODE_KEY, {});
+  const value = scoped ?? legacy;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
+  );
 }
 
 function saveLocal(key: string, value: unknown): boolean {
@@ -171,8 +190,9 @@ export default function CodingPractice() {
   const [busy, setBusy] = useState<StageBusy>('load');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [solved, setSolved] = useState<string[]>(readSolved);
-  const [savedCode, setSavedCode] = useState<Record<string, string>>(readSavedCode);
+  const [solved, setSolved] = useState<string[]>(() => readSolved(courseId));
+  const [savedCode, setSavedCode] = useState<Record<string, string>>(() => readSavedCode(courseId));
+  const [progressLoaded, setProgressLoaded] = useState(false);
   const [resultTab, setResultTab] = useState<ResultTab>('run');
   const [copyLabel, setCopyLabel] = useState('Copy code');
 
@@ -181,24 +201,51 @@ export default function CodingPractice() {
 
     const loadProblems = async () => {
       setBusy('load');
+      setProgressLoaded(false);
       setError('');
       setNotice('');
       try {
-        // Passing courseId is essential: the backend uses course metadata
-        // to select C, Python, Java, SQL, and the relevant DSA question bank.
+        // Passing courseId selects the language and problem bank for this course.
         const data = await codingApi.problems(courseId);
         if (!alive) return;
         if (!Array.isArray(data)) {
           throw new Error('The server returned an invalid problems list.');
         }
 
+        let remoteRecords: SavedProgressRecord[] = [];
+        try {
+          remoteRecords = await codingApi.progress(courseId) as SavedProgressRecord[];
+        } catch (progressError) {
+          // The local browser draft remains available if the optional Supabase progress table is not configured yet.
+          console.warn('Remote coding progress is unavailable; continuing with local backups.', progressError);
+        }
+        if (!alive) return;
+
         const nextProblems = data as Problem[];
+        const localDrafts = readSavedCode(courseId);
+        const remoteDrafts = Object.fromEntries(
+          remoteRecords
+            .filter((record) => typeof record.problem_id === 'string' && typeof record.code === 'string')
+            .map((record) => [record.problem_id, record.code as string]),
+        );
+        // Prefer local edits if they are newer; they are merged over the cloud copy.
+        const mergedDrafts = { ...remoteDrafts, ...localDrafts };
+        const mergedSolved = Array.from(new Set([
+          ...readSolved(courseId),
+          ...remoteRecords.filter((record) => record.solved).map((record) => record.problem_id),
+        ]));
+
+        setSavedCode(mergedDrafts);
+        setSolved(mergedSolved);
+        saveLocal(scopedStorageKey(CODE_KEY, courseId), mergedDrafts);
+        saveLocal(scopedStorageKey(SOLVED_KEY, courseId), mergedSolved);
         setProblems(nextProblems);
         setActiveId((current) =>
           nextProblems.some((problem) => problem.id === current)
             ? current
             : (nextProblems[0]?.id || ''),
         );
+        setProgressLoaded(true);
       } catch (err) {
         if (!alive) return;
         setProblems([]);
@@ -230,7 +277,29 @@ export default function CodingPractice() {
     setNotice('');
     setResultTab('run');
     setCopyLabel('Copy code');
-  }, [activeProblem?.id]);
+  }, [activeProblem?.id, courseId]);
+
+  // Save code drafts after the student pauses typing. Cloud persistence makes drafts survive refreshes and other devices.
+  useEffect(() => {
+    if (!progressLoaded || !activeProblem) return;
+
+    const timer = window.setTimeout(() => {
+      void codingApi.saveProgress({
+        course_id: courseId,
+        problem_id: activeProblem.id,
+        language: activeProblem.language,
+        difficulty: activeProblem.difficulty,
+        code: sourceCode,
+        solved: solved.includes(activeProblem.id),
+        attempted: false,
+      }).catch((saveError: unknown) => {
+        // Local storage is still maintained synchronously by persistCode.
+        console.warn('Could not sync this coding draft to the server.', saveError);
+      });
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [courseId, activeProblem?.id, activeProblem?.language, activeProblem?.difficulty, sourceCode, solved, progressLoaded]);
 
   const filteredProblems = useMemo(() => {
     const searchText = query.trim().toLowerCase();
@@ -266,7 +335,7 @@ export default function CodingPractice() {
 
     const next = { ...savedCode, [activeProblem.id]: value };
     setSavedCode(next);
-    if (!saveLocal(CODE_KEY, next)) {
+    if (!saveLocal(scopedStorageKey(CODE_KEY, courseId), next)) {
       setNotice('Code is available for this session, but browser storage is unavailable.');
     } else {
       setNotice('');
@@ -340,7 +409,18 @@ export default function CodingPractice() {
       if (result.accepted) {
         const next = Array.from(new Set([...solved, activeProblem.id]));
         setSolved(next);
-        if (!saveLocal(SOLVED_KEY, next)) {
+        void codingApi.saveProgress({
+          course_id: courseId,
+          problem_id: activeProblem.id,
+          language: activeProblem.language,
+          difficulty: activeProblem.difficulty,
+          code: sourceCode,
+          solved: true,
+          attempted: false,
+        }).catch((saveError: unknown) => {
+          console.warn('Accepted solution could not be synced to the server.', saveError);
+        });
+        if (!saveLocal(scopedStorageKey(SOLVED_KEY, courseId), next)) {
           setNotice('Accepted! Browser storage is unavailable, so solved status may not persist after closing the browser.');
         } else {
           setNotice('Accepted! Your solved status has been saved in this browser.');

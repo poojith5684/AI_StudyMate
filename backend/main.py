@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from supabase import create_client, Client
+from coding_catalog import extended_problem_bank
 
 from typing import Optional
 from uuid import uuid4
@@ -3014,6 +3015,16 @@ class CodingSubmitRequest(BaseModel):
     language: Optional[str] = None
 
 
+class CodingProgressSave(BaseModel):
+    problem_id: str
+    course_id: Optional[str] = None
+    language: str = "c"
+    difficulty: str = "Easy"
+    code: str = ""
+    solved: bool = False
+    attempted: bool = False
+
+
 # Keep the existing C fundamentals problem bank exactly as it is.
 _C_BASIC_PROBLEMS = [
     {
@@ -3305,7 +3316,7 @@ def _coding_public_problem(problem, language, track):
     return {
         key: problem[key]
         for key in ("id", "title", "difficulty", "description", "examples", "constraints", "starter_code", "tags")
-    } | {"language": language, "track": track}
+    } | {"language": language, "track": problem.get("track", track)}
 
 
 def _coding_profile(authorization, course_id, language_hint=None):
@@ -3340,21 +3351,17 @@ def _coding_profile(authorization, course_id, language_hint=None):
 
 
 def _coding_problem_bank(profile):
-    if profile["language"] == "sql":
-        return _SQL_BASIC_PROBLEMS
-    if profile["language"] == "java" and profile["track"] == "dsa":
-        return _JAVA_DSA_PROBLEMS
-    if profile["language"] == "java":
-        return _JAVA_BASIC_PROBLEMS
-    if profile["language"] == "python" and profile["track"] == "dsa":
-        return _PYTHON_DSA_PROBLEMS
-    if profile["language"] == "python":
-        return _PYTHON_BASIC_PROBLEMS
-    if profile["track"] == "dsa":
-        return _C_DSA_PROBLEMS
-    return _C_BASIC_PROBLEMS
-
-
+    """Return 100 course-language problems spanning basics and DSA topics."""
+    language = profile["language"]
+    if language == "sql":
+        base = list(_SQL_BASIC_PROBLEMS)
+    elif language == "python":
+        base = list(_PYTHON_BASIC_PROBLEMS) + list(_PYTHON_DSA_PROBLEMS)
+    elif language == "java":
+        base = list(_JAVA_BASIC_PROBLEMS) + list(_JAVA_DSA_PROBLEMS)
+    else:
+        base = list(_C_BASIC_PROBLEMS) + list(_C_DSA_PROBLEMS)
+    return extended_problem_bank(language, base, target=100)
 
 
 def _coding_judge_headers():
@@ -3552,4 +3559,153 @@ def coding_submit_code(data: CodingSubmitRequest, authorization: Optional[str] =
 
     results = [dict(case_number=index + 1, **item) for index, item in enumerate(raw_results)]
     passed_count = sum(1 for item in results if item["passed"])
-    return {"accepted": passed_count == len(problem["tests"]), "passed": passed_count, "total": len(problem["tests"]), "results": results}
+    accepted = passed_count == len(problem["tests"])
+    try:
+        user = get_current_user(authorization)
+        _coding_progress_write_row(str(user.id), extract_bearer_token(authorization), {
+            "course_id": str(data.course_id or ""),
+            "problem_id": data.problem_id,
+            "language": profile["language"],
+            "difficulty": problem.get("difficulty", "Easy"),
+            "code": data.source_code,
+            "solved": accepted,
+            "attempted": True,
+        })
+    except Exception as exc:
+        # Do not turn a successful code validation into a failure if persistence is temporarily unavailable.
+        print("Could not persist coding submission:", repr(exc))
+    return {"accepted": accepted, "passed": passed_count, "total": len(problem["tests"]), "results": results}
+
+
+# ============================================================
+# PERSISTENT CODING PRACTICE PROGRESS
+# ============================================================
+
+def _coding_progress_headers(token: str, prefer: str = ""):
+    if not SUPABASE_PUBLISHABLE_KEY or not SUPABASE_URL:
+        raise HTTPException(status_code=503, detail="Supabase publishable key is not configured for coding progress.")
+    headers = {
+        "apikey": SUPABASE_PUBLISHABLE_KEY.strip(),
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    if prefer:
+        headers["Prefer"] = prefer
+    return headers
+
+
+def _coding_progress_url():
+    return SUPABASE_URL.strip().rstrip("/") + "/rest/v1/coding_progress"
+
+
+def _coding_progress_write_row(user_id: str, token: str, payload: dict):
+    """Upsert code/solved state without ever downgrading an already solved item."""
+    course_key = str(payload.get("course_id") or "")
+    problem_id = str(payload.get("problem_id") or "").strip()
+    if not problem_id:
+        return False
+
+    headers = _coding_progress_headers(token)
+    lookup = {
+        "select": "solved,attempts,code",
+        "user_id": f"eq.{user_id}",
+        "course_id": f"eq.{course_key}",
+        "problem_id": f"eq.{problem_id}",
+        "limit": "1",
+    }
+    previous = {}
+    try:
+        existing = httpx.get(_coding_progress_url(), headers=headers, params=lookup, timeout=12.0)
+        if existing.status_code < 400:
+            rows = existing.json() or []
+            if rows:
+                previous = rows[0]
+        else:
+            print("Coding progress lookup failed:", existing.status_code, existing.text[:300])
+    except Exception as exc:
+        print("Coding progress lookup exception:", repr(exc))
+
+    solved = bool(payload.get("solved", False) or previous.get("solved", False))
+    attempts = int(previous.get("attempts") or 0) + (1 if payload.get("attempted") else 0)
+    body = {
+        "user_id": user_id,
+        "course_id": course_key,
+        "problem_id": problem_id,
+        "language": str(payload.get("language") or "c").lower(),
+        "difficulty": str(payload.get("difficulty") or "Easy").title(),
+        "code": str(payload.get("code") or ""),
+        "solved": solved,
+        "attempts": attempts,
+        "updated_at": now_iso(),
+    }
+    try:
+        response = httpx.post(
+            _coding_progress_url(),
+            params={"on_conflict": "user_id,course_id,problem_id"},
+            headers=_coding_progress_headers(token, "resolution=merge-duplicates,return=representation"),
+            json=body,
+            timeout=15.0,
+        )
+        if response.status_code >= 400:
+            print("Coding progress save failed:", response.status_code, response.text[:600])
+            return False
+        return True
+    except Exception as exc:
+        print("Coding progress save exception:", repr(exc))
+        return False
+
+
+@app.get("/api/coding/progress")
+def coding_get_progress(
+    course_id: Optional[str] = None,
+    authorization: Optional[str] = Header(default=None),
+):
+    user = get_current_user(authorization)
+    token = extract_bearer_token(authorization)
+    course_key = str(course_id or "")
+    if course_id:
+        get_user_course(course_id, str(user.id), token)
+    params = {
+        "select": "problem_id,course_id,language,difficulty,code,solved,attempts,updated_at",
+        "user_id": f"eq.{user.id}",
+        "course_id": f"eq.{course_key}",
+        "order": "updated_at.desc",
+    }
+    try:
+        response = httpx.get(
+            _coding_progress_url(),
+            headers=_coding_progress_headers(token),
+            params=params,
+            timeout=15.0,
+        )
+        if response.status_code in (404, 400) and "coding_progress" in response.text.lower():
+            raise HTTPException(status_code=503, detail="Coding progress table is not set up. Run backend/sql/coding_progress.sql in the Supabase SQL Editor.")
+        if response.status_code >= 400:
+            print("Coding progress read failed:", response.status_code, response.text[:600])
+            raise HTTPException(status_code=502, detail="Could not load saved coding progress. Check the coding_progress Supabase table.")
+        return response.json() or []
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print("Coding progress read exception:", repr(exc))
+        raise HTTPException(status_code=502, detail="Could not load saved coding progress.")
+
+
+@app.post("/api/coding/progress")
+def coding_save_progress(
+    data: CodingProgressSave,
+    authorization: Optional[str] = Header(default=None),
+):
+    user = get_current_user(authorization)
+    token = extract_bearer_token(authorization)
+    if data.course_id:
+        get_user_course(data.course_id, str(user.id), token)
+    if not data.problem_id.strip():
+        raise HTTPException(status_code=400, detail="problem_id is required.")
+    payload = data.model_dump() if hasattr(data, "model_dump") else data.dict()
+    payload["course_id"] = str(data.course_id or "")
+    saved = _coding_progress_write_row(str(user.id), token, payload)
+    if not saved:
+        raise HTTPException(status_code=503, detail="Could not save coding progress. Make sure backend/sql/coding_progress.sql has been run in Supabase.")
+    return {"success": True, "problem_id": data.problem_id, "solved": bool(data.solved), "message": "Coding progress saved."}
