@@ -22,6 +22,11 @@ from uuid import uuid4
 from datetime import datetime, timezone
 
 import os
+import json
+import random
+import re
+import zipfile
+import xml.etree.ElementTree as ET
 import shutil
 import httpx
 
@@ -2224,173 +2229,558 @@ def get_quiz(
 
 
 # ============================================================
+# COURSE-AWARE QUIZ HELPERS
+# ============================================================
+
+def _quiz_material_context(course_id: str):
+    """Extract readable course upload text when files are available on this server."""
+    excerpts = []
+    titles = []
+    text_extensions = {".txt", ".md", ".csv", ".json", ".py", ".c", ".h", ".cpp", ".java", ".sql", ".html", ".xml", ".yaml", ".yml"}
+
+    for material in materials:
+        if str(material.get("course_id") or "") != str(course_id):
+            continue
+        title = str(material.get("title") or material.get("filename") or "Study material")
+        if title not in titles:
+            titles.append(title)
+        content = material.get("extracted_text") or material.get("text") or material.get("content") or ""
+        filename = os.path.basename(str(material.get("filename") or ""))
+        path = os.path.join(UPLOAD_DIR, filename) if filename else ""
+
+        if not content and path and os.path.isfile(path):
+            extension = os.path.splitext(filename)[1].lower()
+            try:
+                if extension == ".pdf":
+                    from pypdf import PdfReader
+                    reader = PdfReader(path)
+                    content = "\n".join((page.extract_text() or "") for page in reader.pages[:25])
+                elif extension == ".pptx":
+                    from pptx import Presentation
+                    deck = Presentation(path)
+                    slide_text = []
+                    for slide in deck.slides[:30]:
+                        for shape in slide.shapes:
+                            if hasattr(shape, "text") and shape.text.strip():
+                                slide_text.append(shape.text.strip())
+                    content = "\n".join(slide_text)
+                elif extension == ".docx":
+                    with zipfile.ZipFile(path) as archive:
+                        root = ET.fromstring(archive.read("word/document.xml"))
+                    content = " ".join(node.text or "" for node in root.iter() if node.tag.endswith("}t"))
+                elif extension in text_extensions:
+                    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                        content = handle.read()
+            except Exception as exc:
+                print("Quiz material extraction failed:", title, repr(exc))
+
+        if isinstance(content, str) and content.strip():
+            excerpts.append(f"Material: {title}\n{content.strip()[:5500]}")
+
+    return "\n\n".join(excerpts)[:16000], titles
+
+
+def _quiz_fallback_bank(course_title: str, subject: str = "", description: str = ""):
+    """Real subject questions used only if AI generation cannot be reached."""
+    text = f"{course_title} {subject} {description}".lower()
+    banks = {
+        "python": [
+            {"question": "Which Python collection is mutable?", "options": ["tuple", "list", "str", "frozenset"], "correct_answer": 1, "topic": "Python data types", "explanation": "Lists are mutable; tuples, strings and frozensets are immutable."},
+            {"question": "What does len([4, 8, 12]) return?", "options": ["2", "3", "4", "12"], "correct_answer": 1, "topic": "Built-in functions", "explanation": "The list contains three elements, so len returns 3."},
+            {"question": "Which keyword defines a function in Python?", "options": ["func", "function", "def", "lambda-only"], "correct_answer": 2, "topic": "Functions", "explanation": "The def keyword starts a named function definition."},
+            {"question": "What values are produced by range(3)?", "options": ["1, 2, 3", "0, 1, 2", "0, 1, 2, 3", "3 only"], "correct_answer": 1, "topic": "Loops", "explanation": "range(3) starts at zero and stops before three."},
+            {"question": "Which literal represents no value in Python?", "options": ["NULL", "undefined", "None", "void"], "correct_answer": 2, "topic": "Python basics", "explanation": "Python uses the singleton None to represent the absence of a value."},
+        ],
+        "java": [
+            {"question": "Which method signature is the usual Java application entry point?", "options": ["public static void main(String[] args)", "public void start()", "static int main()", "private static run()"], "correct_answer": 0, "topic": "Java basics", "explanation": "The JVM looks for public static void main(String[] args) as the standard entry point."},
+            {"question": "Which keyword is used to inherit a class in Java?", "options": ["implements", "extends", "inherits", "superclass"], "correct_answer": 1, "topic": "Inheritance", "explanation": "A Java class extends another class to inherit its accessible members."},
+            {"question": "Which Java type is immutable?", "options": ["String", "StringBuilder", "ArrayList", "int[]"], "correct_answer": 0, "topic": "Strings", "explanation": "String objects cannot be changed after creation; operations create new strings."},
+            {"question": "What does the JVM do?", "options": ["Compiles SQL queries", "Executes Java bytecode", "Designs classes", "Stores source files"], "correct_answer": 1, "topic": "Java platform", "explanation": "The Java Virtual Machine executes bytecode and provides the runtime environment."},
+            {"question": "Which access modifier limits access to the declaring class?", "options": ["public", "protected", "private", "default-public"], "correct_answer": 2, "topic": "Encapsulation", "explanation": "private members are accessible directly only within their declaring class."},
+        ],
+        "sql": [
+            {"question": "Which SQL statement retrieves rows from a table?", "options": ["SELECT", "FETCHTABLE", "READ ROW", "OPEN"], "correct_answer": 0, "topic": "SELECT queries", "explanation": "SELECT retrieves columns and rows from one or more tables."},
+            {"question": "What is the main purpose of a primary key?", "options": ["Allow duplicate row IDs", "Uniquely identify each row", "Sort every column", "Encrypt table values"], "correct_answer": 1, "topic": "Keys and constraints", "explanation": "A primary key uniquely identifies each record and cannot be NULL."},
+            {"question": "Which clause filters rows before grouping?", "options": ["ORDER BY", "WHERE", "LIMIT only", "AS"], "correct_answer": 1, "topic": "Filtering", "explanation": "WHERE applies row-level filtering before GROUP BY aggregation."},
+            {"question": "Which aggregate function counts rows?", "options": ["SUM()", "TOTALTEXT()", "COUNT()", "ROWS()"], "correct_answer": 2, "topic": "Aggregate functions", "explanation": "COUNT(*) counts rows; COUNT(column) counts non-NULL values in that column."},
+            {"question": "How should SQL test whether a value is NULL?", "options": ["= NULL", "== NULL", "IS NULL", "EQUALS NULL"], "correct_answer": 2, "topic": "NULL handling", "explanation": "SQL uses IS NULL because NULL is not an ordinary comparable value."},
+        ],
+        "dsa": [
+            {"question": "Which principle describes a stack?", "options": ["FIFO", "LIFO", "Random access only", "Shortest-job-first"], "correct_answer": 1, "topic": "Stacks", "explanation": "A stack removes the most recently inserted item first: last in, first out."},
+            {"question": "What condition does binary search require?", "options": ["The data must be sorted", "Every value must be unique", "The list must be linked", "The size must be odd"], "correct_answer": 0, "topic": "Searching", "explanation": "Binary search halves the search interval and requires sorted data."},
+            {"question": "Which data structure is typically used by breadth-first search?", "options": ["Stack", "Queue", "Heap only", "Hash set only"], "correct_answer": 1, "topic": "Graph traversal", "explanation": "BFS processes discovered vertices in first-in, first-out order using a queue."},
+            {"question": "What is the expected lookup time of a well-sized hash table?", "options": ["O(1)", "O(log n)", "O(n log n)", "O(n²)"], "correct_answer": 0, "topic": "Hashing", "explanation": "A well-distributed hash table provides expected constant-time lookup."},
+            {"question": "Which item is at the root of a min-heap?", "options": ["The smallest key", "The largest key always", "The median key", "The most recent key"], "correct_answer": 0, "topic": "Heaps", "explanation": "A min-heap maintains the smallest key at its root."},
+        ],
+        "c": [
+            {"question": "Which format specifier prints an int using printf in C?", "options": ["%d", "%f", "%s", "%p only"], "correct_answer": 0, "topic": "Input and output", "explanation": "%d is used for an int in printf; %f is for floating-point output and %s for a string."},
+            {"question": "In C, what does sizeof return?", "options": ["The number of elements in every array", "The size in bytes of a type or object", "A memory address", "The number of characters printed"], "correct_answer": 1, "topic": "Operators", "explanation": "sizeof evaluates to the size in bytes of its operand's type or object."},
+            {"question": "Which operator dereferences a pointer in C?", "options": ["&", "*", "%", "-> only"], "correct_answer": 1, "topic": "Pointers", "explanation": "The unary * operator accesses the object pointed to by a pointer."},
+            {"question": "What is the index of the first element in a C array?", "options": ["-1", "1", "0", "Depends on the compiler"], "correct_answer": 2, "topic": "Arrays", "explanation": "C arrays use zero-based indexing, so the first element is at index 0."},
+            {"question": "Which operator compares two values for equality in C?", "options": ["=", "==", "!=", "=>"], "correct_answer": 1, "topic": "Operators", "explanation": "== compares values; = assigns a value."},
+        ],
+        "math": [
+            {"question": "What is the derivative of x² with respect to x?", "options": ["x", "2x", "x³/3", "2"], "correct_answer": 1, "topic": "Differentiation", "explanation": "By the power rule, d(x²)/dx = 2x."},
+            {"question": "What is an antiderivative of x?", "options": ["x²/2 + C", "2x + C", "1/x + C", "x + C"], "correct_answer": 0, "topic": "Integration", "explanation": "The power rule for integration gives ∫x dx = x²/2 + C."},
+            {"question": "What is the determinant of the 2×2 identity matrix?", "options": ["0", "1", "2", "−1"], "correct_answer": 1, "topic": "Matrices", "explanation": "The identity matrix has diagonal entries 1 and determinant 1."},
+            {"question": "For a non-zero real vector v, what is v·v?", "options": ["Always negative", "Always zero", "The square of its magnitude", "A vector perpendicular to v"], "correct_answer": 2, "topic": "Vectors", "explanation": "v·v = ||v||², which is positive for a non-zero real vector."},
+            {"question": "What does a solution to a differential equation represent?", "options": ["A function satisfying the equation", "Only a constant", "A matrix inverse", "A graph with no variables"], "correct_answer": 0, "topic": "Differential equations", "explanation": "A solution is a function whose derivatives satisfy the given differential equation."},
+        ],
+        "ai": [
+            {"question": "In supervised learning, what does a training example usually contain?", "options": ["Only unlabeled input", "Input features and a target label/value", "Only model weights", "Only a test score"], "correct_answer": 1, "topic": "Supervised learning", "explanation": "Supervised learning uses examples paired with target labels or values."},
+            {"question": "What is overfitting?", "options": ["A model performs well on training data but poorly on unseen data", "A model cannot fit training data at all", "A dataset has no columns", "The learning rate is always zero"], "correct_answer": 0, "topic": "Model generalization", "explanation": "Overfitting means a model has learned training-specific patterns that do not generalize."},
+            {"question": "What is the main purpose of a held-out test set?", "options": ["Tune every training step", "Estimate performance on unseen data", "Store model code", "Increase the number of labels"], "correct_answer": 1, "topic": "Model evaluation", "explanation": "A test set estimates performance on data not used for fitting."},
+            {"question": "Which method is commonly used to reduce a differentiable loss function?", "options": ["Gradient descent", "Binary search only", "Breadth-first search", "Database normalization"], "correct_answer": 0, "topic": "Optimization", "explanation": "Gradient descent updates parameters in a direction that locally reduces loss."},
+            {"question": "Which task predicts a continuous numerical value?", "options": ["Classification", "Regression", "Clustering", "Tokenization"], "correct_answer": 1, "topic": "Machine learning tasks", "explanation": "Regression predicts numerical quantities such as price or temperature."},
+        ],
+        "networks": [
+            {"question": "What does DNS primarily do?", "options": ["Map domain names to IP addresses", "Encrypt every file on a computer", "Route electricity", "Compile web pages"], "correct_answer": 0, "topic": "DNS", "explanation": "DNS resolves domain names to records such as IP addresses."},
+            {"question": "Which transport protocol is connection-oriented?", "options": ["UDP", "TCP", "IP", "ARP"], "correct_answer": 1, "topic": "Transport layer", "explanation": "TCP establishes a connection and provides reliable, ordered delivery."},
+            {"question": "What is the main role of an IP router?", "options": ["Forward packets between networks", "Render HTML", "Store passwords for every app", "Assign variable types"], "correct_answer": 0, "topic": "Routing", "explanation": "Routers forward packets between networks based on routing information."},
+            {"question": "Which protocol is commonly used to load secure websites?", "options": ["HTTPS", "FTP only", "SMTP", "DHCP"], "correct_answer": 0, "topic": "Web protocols", "explanation": "HTTPS is HTTP protected by TLS."},
+            {"question": "What does a subnet mask help identify?", "options": ["Network and host portions of an IPv4 address", "The CPU instruction set", "The file type", "The web page title"], "correct_answer": 0, "topic": "IP addressing", "explanation": "A subnet mask identifies which address bits belong to the network prefix."},
+        ],
+        "semiconductor": [
+            {"question": "What is the majority carrier in an n-type semiconductor?", "options": ["Electrons", "Holes", "Protons", "Neutrons"], "correct_answer": 0, "topic": "Semiconductors", "explanation": "Donor impurities provide extra electrons, making electrons the majority carriers in n-type material."},
+            {"question": "What happens to the depletion region of a PN junction under forward bias?", "options": ["It generally narrows", "It becomes infinitely wide", "It is replaced by a metal layer", "It never changes"], "correct_answer": 0, "topic": "PN junction", "explanation": "Forward bias reduces the potential barrier and narrows the depletion region."},
+            {"question": "Which quantity is measured in ohms?", "options": ["Resistance", "Capacitance", "Current", "Power"], "correct_answer": 0, "topic": "Electrical properties", "explanation": "Resistance is measured in ohms (Ω)."},
+            {"question": "What is the SI unit of electric current?", "options": ["Ampere", "Volt", "Watt", "Farad"], "correct_answer": 0, "topic": "Electrical quantities", "explanation": "Electric current is measured in amperes (A)."},
+            {"question": "A p-type semiconductor has which majority carrier?", "options": ["Holes", "Electrons", "Photons", "Neutrons"], "correct_answer": 0, "topic": "Semiconductors", "explanation": "Acceptor dopants create holes, which are majority carriers in p-type material."},
+        ],
+    }
+
+    if any(term in text for term in ("data structure", "algorithm", "algorithms", "dsa")):
+        return banks["dsa"]
+    if any(term in text for term in ("sql", "dbms", "database", "mysql", "postgres", "sqlite")):
+        return banks["sql"]
+    if "java" in text:
+        return banks["java"]
+    if "python" in text:
+        return banks["python"]
+    if any(term in text for term in ("semiconductor", "pn junction", "diode", "transistor", "solid state physics")):
+        return banks["semiconductor"]
+    if any(term in text for term in ("computer network", "networking", "tcp/ip", "dns")):
+        return banks["networks"]
+    if any(term in text for term in ("artificial intelligence", "machine learning", "deep learning", "ai/ml")):
+        return banks["ai"]
+    if any(term in text for term in ("mathematics", "calculus", "differential equation", "linear algebra")):
+        return banks["math"]
+    if "c programming" in text or "language c" in text or course_title.strip().lower() == "c":
+        return banks["c"]
+    return []
+
+
+def _normalise_quiz_question(raw_question: dict, index: int, default_topic: str, default_difficulty: str, source_label: str):
+    question_text = str(raw_question.get("question") or "").strip()
+    options = raw_question.get("options")
+    if not question_text or not isinstance(options, list) or len(options) != 4:
+        return None
+    options = [str(option).strip() for option in options]
+    if any(not option for option in options) or len({option.casefold() for option in options}) != 4:
+        return None
+
+    answer = raw_question.get("correct_answer", raw_question.get("answer_index", raw_question.get("answer", 0)))
+    if isinstance(answer, str):
+        answer_text = answer.strip()
+        if len(answer_text) == 1 and answer_text.upper() in {"A", "B", "C", "D"}:
+            answer_index = ord(answer_text.upper()) - ord("A")
+        elif answer_text in options:
+            answer_index = options.index(answer_text)
+        else:
+            try:
+                answer_index = int(answer_text)
+            except ValueError:
+                return None
+    else:
+        try:
+            answer_index = int(answer)
+        except (TypeError, ValueError):
+            return None
+    if answer_index < 0 or answer_index > 3:
+        return None
+
+    indexed_options = list(enumerate(options))
+    random.shuffle(indexed_options)
+    correct_index = next(new_index for new_index, (old_index, _) in enumerate(indexed_options) if old_index == answer_index)
+    level = str(raw_question.get("difficulty") or default_difficulty).lower()
+    if level not in {"easy", "medium", "hard"}:
+        level = default_difficulty
+
+    return {
+        "id": str(index + 1),
+        "question": question_text,
+        "options": [option for _, option in indexed_options],
+        "correct_answer": correct_index,
+        "explanation": str(raw_question.get("explanation") or "Review the concept and why this option is correct."),
+        "topic": str(raw_question.get("topic") or default_topic).strip() or default_topic,
+        "difficulty": level,
+        "source": str(raw_question.get("source") or source_label),
+    }
+
+
+def _parse_ai_quiz(content: str, count: int, default_topic: str, difficulty: str, source_label: str):
+    fence = chr(96) * 3
+    cleaned = re.sub(r"^\s*" + fence + r"(?:json)?\s*", "", content or "", flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*" + fence + r"\s*$", "", cleaned)
+    first = cleaned.find("{")
+    last = cleaned.rfind("}")
+    if first < 0 or last <= first:
+        raise ValueError("The AI response was not a JSON object.")
+    payload = json.loads(cleaned[first:last + 1])
+    raw_questions = payload.get("questions", []) if isinstance(payload, dict) else []
+    if not isinstance(raw_questions, list):
+        raise ValueError("The AI did not return a questions array.")
+
+    questions = []
+    for raw in raw_questions:
+        if not isinstance(raw, dict):
+            continue
+        item = _normalise_quiz_question(raw, len(questions), default_topic, difficulty, source_label)
+        if item:
+            questions.append(item)
+        if len(questions) >= count:
+            break
+    if len(questions) < count:
+        raise ValueError(f"The AI returned {len(questions)} valid questions; {count} were requested.")
+    return questions
+
+
+# ============================================================
+# COURSE-AWARE QUIZ HELPERS
+# ============================================================
+
+def _quiz_material_context(course_id: str):
+    """Extract readable course upload text when files are available on this server."""
+    excerpts = []
+    titles = []
+    text_extensions = {".txt", ".md", ".csv", ".json", ".py", ".c", ".h", ".cpp", ".java", ".sql", ".html", ".xml", ".yaml", ".yml"}
+
+    for material in materials:
+        if str(material.get("course_id") or "") != str(course_id):
+            continue
+        title = str(material.get("title") or material.get("filename") or "Study material")
+        if title not in titles:
+            titles.append(title)
+        content = material.get("extracted_text") or material.get("text") or material.get("content") or ""
+        filename = os.path.basename(str(material.get("filename") or ""))
+        path = os.path.join(UPLOAD_DIR, filename) if filename else ""
+
+        if not content and path and os.path.isfile(path):
+            extension = os.path.splitext(filename)[1].lower()
+            try:
+                if extension == ".pdf":
+                    from pypdf import PdfReader
+                    reader = PdfReader(path)
+                    content = "\n".join((page.extract_text() or "") for page in reader.pages[:25])
+                elif extension == ".pptx":
+                    from pptx import Presentation
+                    deck = Presentation(path)
+                    slide_text = []
+                    for slide in deck.slides[:30]:
+                        for shape in slide.shapes:
+                            if hasattr(shape, "text") and shape.text.strip():
+                                slide_text.append(shape.text.strip())
+                    content = "\n".join(slide_text)
+                elif extension == ".docx":
+                    with zipfile.ZipFile(path) as archive:
+                        root = ET.fromstring(archive.read("word/document.xml"))
+                    content = " ".join(node.text or "" for node in root.iter() if node.tag.endswith("}t"))
+                elif extension in text_extensions:
+                    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                        content = handle.read()
+            except Exception as exc:
+                print("Quiz material extraction failed:", title, repr(exc))
+
+        if isinstance(content, str) and content.strip():
+            excerpts.append(f"Material: {title}\n{content.strip()[:5500]}")
+
+    return "\n\n".join(excerpts)[:16000], titles
+
+
+def _quiz_fallback_bank(course_title: str, subject: str = "", description: str = ""):
+    """Real subject questions used only if AI generation cannot be reached."""
+    text = f"{course_title} {subject} {description}".lower()
+    banks = {
+        "python": [
+            {"question": "Which Python collection is mutable?", "options": ["tuple", "list", "str", "frozenset"], "correct_answer": 1, "topic": "Python data types", "explanation": "Lists are mutable; tuples, strings and frozensets are immutable."},
+            {"question": "What does len([4, 8, 12]) return?", "options": ["2", "3", "4", "12"], "correct_answer": 1, "topic": "Built-in functions", "explanation": "The list contains three elements, so len returns 3."},
+            {"question": "Which keyword defines a function in Python?", "options": ["func", "function", "def", "lambda-only"], "correct_answer": 2, "topic": "Functions", "explanation": "The def keyword starts a named function definition."},
+            {"question": "What values are produced by range(3)?", "options": ["1, 2, 3", "0, 1, 2", "0, 1, 2, 3", "3 only"], "correct_answer": 1, "topic": "Loops", "explanation": "range(3) starts at zero and stops before three."},
+            {"question": "Which literal represents no value in Python?", "options": ["NULL", "undefined", "None", "void"], "correct_answer": 2, "topic": "Python basics", "explanation": "Python uses the singleton None to represent the absence of a value."},
+        ],
+        "java": [
+            {"question": "Which method signature is the usual Java application entry point?", "options": ["public static void main(String[] args)", "public void start()", "static int main()", "private static run()"], "correct_answer": 0, "topic": "Java basics", "explanation": "The JVM looks for public static void main(String[] args) as the standard entry point."},
+            {"question": "Which keyword is used to inherit a class in Java?", "options": ["implements", "extends", "inherits", "superclass"], "correct_answer": 1, "topic": "Inheritance", "explanation": "A Java class extends another class to inherit its accessible members."},
+            {"question": "Which Java type is immutable?", "options": ["String", "StringBuilder", "ArrayList", "int[]"], "correct_answer": 0, "topic": "Strings", "explanation": "String objects cannot be changed after creation; operations create new strings."},
+            {"question": "What does the JVM do?", "options": ["Compiles SQL queries", "Executes Java bytecode", "Designs classes", "Stores source files"], "correct_answer": 1, "topic": "Java platform", "explanation": "The Java Virtual Machine executes bytecode and provides the runtime environment."},
+            {"question": "Which access modifier limits access to the declaring class?", "options": ["public", "protected", "private", "default-public"], "correct_answer": 2, "topic": "Encapsulation", "explanation": "private members are accessible directly only within their declaring class."},
+        ],
+        "sql": [
+            {"question": "Which SQL statement retrieves rows from a table?", "options": ["SELECT", "FETCHTABLE", "READ ROW", "OPEN"], "correct_answer": 0, "topic": "SELECT queries", "explanation": "SELECT retrieves columns and rows from one or more tables."},
+            {"question": "What is the main purpose of a primary key?", "options": ["Allow duplicate row IDs", "Uniquely identify each row", "Sort every column", "Encrypt table values"], "correct_answer": 1, "topic": "Keys and constraints", "explanation": "A primary key uniquely identifies each record and cannot be NULL."},
+            {"question": "Which clause filters rows before grouping?", "options": ["ORDER BY", "WHERE", "LIMIT only", "AS"], "correct_answer": 1, "topic": "Filtering", "explanation": "WHERE applies row-level filtering before GROUP BY aggregation."},
+            {"question": "Which aggregate function counts rows?", "options": ["SUM()", "TOTALTEXT()", "COUNT()", "ROWS()"], "correct_answer": 2, "topic": "Aggregate functions", "explanation": "COUNT(*) counts rows; COUNT(column) counts non-NULL values in that column."},
+            {"question": "How should SQL test whether a value is NULL?", "options": ["= NULL", "== NULL", "IS NULL", "EQUALS NULL"], "correct_answer": 2, "topic": "NULL handling", "explanation": "SQL uses IS NULL because NULL is not an ordinary comparable value."},
+        ],
+        "dsa": [
+            {"question": "Which principle describes a stack?", "options": ["FIFO", "LIFO", "Random access only", "Shortest-job-first"], "correct_answer": 1, "topic": "Stacks", "explanation": "A stack removes the most recently inserted item first: last in, first out."},
+            {"question": "What condition does binary search require?", "options": ["The data must be sorted", "Every value must be unique", "The list must be linked", "The size must be odd"], "correct_answer": 0, "topic": "Searching", "explanation": "Binary search halves the search interval and requires sorted data."},
+            {"question": "Which data structure is typically used by breadth-first search?", "options": ["Stack", "Queue", "Heap only", "Hash set only"], "correct_answer": 1, "topic": "Graph traversal", "explanation": "BFS processes discovered vertices in first-in, first-out order using a queue."},
+            {"question": "What is the expected lookup time of a well-sized hash table?", "options": ["O(1)", "O(log n)", "O(n log n)", "O(n²)"], "correct_answer": 0, "topic": "Hashing", "explanation": "A well-distributed hash table provides expected constant-time lookup."},
+            {"question": "Which item is at the root of a min-heap?", "options": ["The smallest key", "The largest key always", "The median key", "The most recent key"], "correct_answer": 0, "topic": "Heaps", "explanation": "A min-heap maintains the smallest key at its root."},
+        ],
+        "c": [
+            {"question": "Which format specifier prints an int using printf in C?", "options": ["%d", "%f", "%s", "%p only"], "correct_answer": 0, "topic": "Input and output", "explanation": "%d is used for an int in printf; %f is for floating-point output and %s for a string."},
+            {"question": "In C, what does sizeof return?", "options": ["The number of elements in every array", "The size in bytes of a type or object", "A memory address", "The number of characters printed"], "correct_answer": 1, "topic": "Operators", "explanation": "sizeof evaluates to the size in bytes of its operand's type or object."},
+            {"question": "Which operator dereferences a pointer in C?", "options": ["&", "*", "%", "-> only"], "correct_answer": 1, "topic": "Pointers", "explanation": "The unary * operator accesses the object pointed to by a pointer."},
+            {"question": "What is the index of the first element in a C array?", "options": ["-1", "1", "0", "Depends on the compiler"], "correct_answer": 2, "topic": "Arrays", "explanation": "C arrays use zero-based indexing, so the first element is at index 0."},
+            {"question": "Which operator compares two values for equality in C?", "options": ["=", "==", "!=", "=>"], "correct_answer": 1, "topic": "Operators", "explanation": "== compares values; = assigns a value."},
+        ],
+        "math": [
+            {"question": "What is the derivative of x² with respect to x?", "options": ["x", "2x", "x³/3", "2"], "correct_answer": 1, "topic": "Differentiation", "explanation": "By the power rule, d(x²)/dx = 2x."},
+            {"question": "What is an antiderivative of x?", "options": ["x²/2 + C", "2x + C", "1/x + C", "x + C"], "correct_answer": 0, "topic": "Integration", "explanation": "The power rule for integration gives ∫x dx = x²/2 + C."},
+            {"question": "What is the determinant of the 2×2 identity matrix?", "options": ["0", "1", "2", "−1"], "correct_answer": 1, "topic": "Matrices", "explanation": "The identity matrix has diagonal entries 1 and determinant 1."},
+            {"question": "For a non-zero real vector v, what is v·v?", "options": ["Always negative", "Always zero", "The square of its magnitude", "A vector perpendicular to v"], "correct_answer": 2, "topic": "Vectors", "explanation": "v·v = ||v||², which is positive for a non-zero real vector."},
+            {"question": "What does a solution to a differential equation represent?", "options": ["A function satisfying the equation", "Only a constant", "A matrix inverse", "A graph with no variables"], "correct_answer": 0, "topic": "Differential equations", "explanation": "A solution is a function whose derivatives satisfy the given differential equation."},
+        ],
+        "ai": [
+            {"question": "In supervised learning, what does a training example usually contain?", "options": ["Only unlabeled input", "Input features and a target label/value", "Only model weights", "Only a test score"], "correct_answer": 1, "topic": "Supervised learning", "explanation": "Supervised learning uses examples paired with target labels or values."},
+            {"question": "What is overfitting?", "options": ["A model performs well on training data but poorly on unseen data", "A model cannot fit training data at all", "A dataset has no columns", "The learning rate is always zero"], "correct_answer": 0, "topic": "Model generalization", "explanation": "Overfitting means a model has learned training-specific patterns that do not generalize."},
+            {"question": "What is the main purpose of a held-out test set?", "options": ["Tune every training step", "Estimate performance on unseen data", "Store model code", "Increase the number of labels"], "correct_answer": 1, "topic": "Model evaluation", "explanation": "A test set estimates performance on data not used for fitting."},
+            {"question": "Which method is commonly used to reduce a differentiable loss function?", "options": ["Gradient descent", "Binary search only", "Breadth-first search", "Database normalization"], "correct_answer": 0, "topic": "Optimization", "explanation": "Gradient descent updates parameters in a direction that locally reduces loss."},
+            {"question": "Which task predicts a continuous numerical value?", "options": ["Classification", "Regression", "Clustering", "Tokenization"], "correct_answer": 1, "topic": "Machine learning tasks", "explanation": "Regression predicts numerical quantities such as price or temperature."},
+        ],
+        "networks": [
+            {"question": "What does DNS primarily do?", "options": ["Map domain names to IP addresses", "Encrypt every file on a computer", "Route electricity", "Compile web pages"], "correct_answer": 0, "topic": "DNS", "explanation": "DNS resolves domain names to records such as IP addresses."},
+            {"question": "Which transport protocol is connection-oriented?", "options": ["UDP", "TCP", "IP", "ARP"], "correct_answer": 1, "topic": "Transport layer", "explanation": "TCP establishes a connection and provides reliable, ordered delivery."},
+            {"question": "What is the main role of an IP router?", "options": ["Forward packets between networks", "Render HTML", "Store passwords for every app", "Assign variable types"], "correct_answer": 0, "topic": "Routing", "explanation": "Routers forward packets between networks based on routing information."},
+            {"question": "Which protocol is commonly used to load secure websites?", "options": ["HTTPS", "FTP only", "SMTP", "DHCP"], "correct_answer": 0, "topic": "Web protocols", "explanation": "HTTPS is HTTP protected by TLS."},
+            {"question": "What does a subnet mask help identify?", "options": ["Network and host portions of an IPv4 address", "The CPU instruction set", "The file type", "The web page title"], "correct_answer": 0, "topic": "IP addressing", "explanation": "A subnet mask identifies which address bits belong to the network prefix."},
+        ],
+        "semiconductor": [
+            {"question": "What is the majority carrier in an n-type semiconductor?", "options": ["Electrons", "Holes", "Protons", "Neutrons"], "correct_answer": 0, "topic": "Semiconductors", "explanation": "Donor impurities provide extra electrons, making electrons the majority carriers in n-type material."},
+            {"question": "What happens to the depletion region of a PN junction under forward bias?", "options": ["It generally narrows", "It becomes infinitely wide", "It is replaced by a metal layer", "It never changes"], "correct_answer": 0, "topic": "PN junction", "explanation": "Forward bias reduces the potential barrier and narrows the depletion region."},
+            {"question": "Which quantity is measured in ohms?", "options": ["Resistance", "Capacitance", "Current", "Power"], "correct_answer": 0, "topic": "Electrical properties", "explanation": "Resistance is measured in ohms (Ω)."},
+            {"question": "What is the SI unit of electric current?", "options": ["Ampere", "Volt", "Watt", "Farad"], "correct_answer": 0, "topic": "Electrical quantities", "explanation": "Electric current is measured in amperes (A)."},
+            {"question": "A p-type semiconductor has which majority carrier?", "options": ["Holes", "Electrons", "Photons", "Neutrons"], "correct_answer": 0, "topic": "Semiconductors", "explanation": "Acceptor dopants create holes, which are majority carriers in p-type material."},
+        ],
+    }
+
+    if any(term in text for term in ("data structure", "algorithm", "algorithms", "dsa")):
+        return banks["dsa"]
+    if any(term in text for term in ("sql", "dbms", "database", "mysql", "postgres", "sqlite")):
+        return banks["sql"]
+    if "java" in text:
+        return banks["java"]
+    if "python" in text:
+        return banks["python"]
+    if any(term in text for term in ("semiconductor", "pn junction", "diode", "transistor", "solid state physics")):
+        return banks["semiconductor"]
+    if any(term in text for term in ("computer network", "networking", "tcp/ip", "dns")):
+        return banks["networks"]
+    if any(term in text for term in ("artificial intelligence", "machine learning", "deep learning", "ai/ml")):
+        return banks["ai"]
+    if any(term in text for term in ("mathematics", "calculus", "differential equation", "linear algebra")):
+        return banks["math"]
+    if "c programming" in text or "language c" in text or course_title.strip().lower() == "c":
+        return banks["c"]
+    return []
+
+
+def _normalise_quiz_question(raw_question: dict, index: int, default_topic: str, default_difficulty: str, source_label: str):
+    question_text = str(raw_question.get("question") or "").strip()
+    options = raw_question.get("options")
+    if not question_text or not isinstance(options, list) or len(options) != 4:
+        return None
+    options = [str(option).strip() for option in options]
+    if any(not option for option in options) or len({option.casefold() for option in options}) != 4:
+        return None
+
+    answer = raw_question.get("correct_answer", raw_question.get("answer_index", raw_question.get("answer", 0)))
+    if isinstance(answer, str):
+        answer_text = answer.strip()
+        if len(answer_text) == 1 and answer_text.upper() in {"A", "B", "C", "D"}:
+            answer_index = ord(answer_text.upper()) - ord("A")
+        elif answer_text in options:
+            answer_index = options.index(answer_text)
+        else:
+            try:
+                answer_index = int(answer_text)
+            except ValueError:
+                return None
+    else:
+        try:
+            answer_index = int(answer)
+        except (TypeError, ValueError):
+            return None
+    if answer_index < 0 or answer_index > 3:
+        return None
+
+    indexed_options = list(enumerate(options))
+    random.shuffle(indexed_options)
+    correct_index = next(new_index for new_index, (old_index, _) in enumerate(indexed_options) if old_index == answer_index)
+    level = str(raw_question.get("difficulty") or default_difficulty).lower()
+    if level not in {"easy", "medium", "hard"}:
+        level = default_difficulty
+
+    return {
+        "id": str(index + 1),
+        "question": question_text,
+        "options": [option for _, option in indexed_options],
+        "correct_answer": correct_index,
+        "explanation": str(raw_question.get("explanation") or "Review the concept and why this option is correct."),
+        "topic": str(raw_question.get("topic") or default_topic).strip() or default_topic,
+        "difficulty": level,
+        "source": str(raw_question.get("source") or source_label),
+    }
+
+
+def _parse_ai_quiz(content: str, count: int, default_topic: str, difficulty: str, source_label: str):
+    fence = chr(96) * 3
+    cleaned = re.sub(r"^\s*" + fence + r"(?:json)?\s*", "", content or "", flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*" + fence + r"\s*$", "", cleaned)
+    first = cleaned.find("{")
+    last = cleaned.rfind("}")
+    if first < 0 or last <= first:
+        raise ValueError("The AI response was not a JSON object.")
+    payload = json.loads(cleaned[first:last + 1])
+    raw_questions = payload.get("questions", []) if isinstance(payload, dict) else []
+    if not isinstance(raw_questions, list):
+        raise ValueError("The AI did not return a questions array.")
+
+    questions = []
+    for raw in raw_questions:
+        if not isinstance(raw, dict):
+            continue
+        item = _normalise_quiz_question(raw, len(questions), default_topic, difficulty, source_label)
+        if item:
+            questions.append(item)
+        if len(questions) >= count:
+            break
+    if len(questions) < count:
+        raise ValueError(f"The AI returned {len(questions)} valid questions; {count} were requested.")
+    return questions
+
+
+# ============================================================
 # QUIZ GENERATION
 # ============================================================
 
-@app.post(
-    "/api/quiz/generate"
-)
+@app.post("/api/quiz/generate")
 def generate_quiz(
     data: QuizGenerate,
-    authorization: Optional[str] = Header(
-        default=None
-    ),
+    authorization: Optional[str] = Header(default=None),
 ):
+    user = get_current_user(authorization)
+    token = extract_bearer_token(authorization)
+    course = get_user_course(data.course_id, str(user.id), token)
+    count = max(3, min(int(data.question_count or 5), 20))
+    difficulty = str(data.difficulty or "medium").lower()
+    if difficulty not in {"easy", "medium", "hard"}:
+        difficulty = "medium"
 
-    user = get_current_user(
-        authorization
-    )
+    requested_topic = (data.topic or "").strip()
+    focus_topic = requested_topic or str(course.get("title") or "General study")
+    material_context, material_titles = _quiz_material_context(data.course_id)
+    source_label = "Uploaded study materials" if material_context else "Course curriculum"
+    questions = None
+    ai_error = None
+    used_fallback = False
 
-    course = get_user_course(
-            data.course_id,
-            str(user.id),
-            extract_bearer_token(authorization),
+    if ai_client:
+        try:
+            system_prompt = """
+You are an expert college-level assessment writer. Write high-quality multiple-choice questions that test actual subject knowledge.
+Return ONLY valid JSON with this exact shape:
+{"questions":[{"question":"...","options":["A","B","C","D"],"correct_answer":0,"explanation":"...","topic":"...","difficulty":"easy|medium|hard"}]}
+Rules:
+- Test real facts, concepts, calculations, code tracing, or problem-solving in the requested course/topic.
+- Never write generic study-habit, motivation, or meta-learning questions.
+- Distractors must be plausible and specific to the subject; never use silly options such as "skip practice".
+- Exactly four unique options per question. correct_answer is the zero-based index of the one correct option.
+- Include a clear explanation and a meaningful topic for each answer.
+- Avoid repeated questions and match the requested difficulty and college-student level.
+- If source excerpts are supplied, base questions and correct answers on them; do not invent facts beyond them.
+- If no readable excerpts are supplied, use accurate domain knowledge for the course and requested topic.
+- Return exactly the requested number of questions, with no Markdown or text outside JSON.
+""".strip()
+            user_prompt = (
+                f"COURSE TITLE: {course.get('title', 'Untitled course')}\n"
+                f"SUBJECT: {course.get('subject') or 'Not specified'}\n"
+                f"COURSE DESCRIPTION: {course.get('description') or 'Not specified'}\n"
+                f"FOCUS TOPIC: {focus_topic}\nDIFFICULTY: {difficulty}\nQUESTION COUNT: {count}\n\n"
+                f"READABLE UPLOADED MATERIAL EXCERPTS:\n"
+                f"{material_context or 'No readable text was found in uploaded files. Use accurate subject knowledge for the course and focus topic.'}\n\n"
+                f"Generate questions specifically about {focus_topic}. Avoid generic questions about how to study."
+            )
+            response = ai_client.chat.completions.create(
+                model=AI_MODEL,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                temperature=0.2,
+                max_tokens=min(7000, 500 + count * 320),
+                timeout=45,
+            )
+            questions = _parse_ai_quiz(
+                response.choices[0].message.content or "",
+                count,
+                focus_topic,
+                difficulty,
+                source_label,
+            )
+        except Exception as exc:
+            ai_error = str(exc)
+            print("AI quiz generation failed:", repr(exc))
+
+    if not questions:
+        fallback = _quiz_fallback_bank(
+            str(course.get("title") or ""),
+            str(course.get("subject") or ""),
+            str(course.get("description") or ""),
         )
+        if not fallback:
+            if ai_error:
+                print("No course-specific fallback available; AI error:", ai_error[:500])
+            raise HTTPException(
+                status_code=503,
+                detail="AI quiz generation is temporarily unavailable for this course. Please retry, or configure AI_API_KEY on the backend.",
+            )
+        questions = []
+        for raw in fallback[:count]:
+            item = _normalise_quiz_question(
+                raw,
+                len(questions),
+                focus_topic,
+                difficulty,
+                "Course fundamentals (AI fallback)",
+            )
+            if item:
+                questions.append(item)
+        used_fallback = True
 
-    count = max(
-        1,
-        min(
-            data.question_count or 5,
-            20,
-        ),
-    )
+    if not questions:
+        raise HTTPException(status_code=503, detail="Could not create valid questions. Please try again.")
+    if used_fallback:
+        source_label = "Course fundamentals (AI fallback)"
 
-    base_questions = [
-
-        {
-            "id": 1,
-
-            "question": (
-                f"What is an important concept in "
-                f"{data.topic or course['title']}?"
-            ),
-
-            "options": [
-                "Understanding the fundamentals",
-                "Ignoring the fundamentals",
-                "Skipping practice",
-                "Avoiding revision",
-            ],
-
-            "answer": 0,
-        },
-
-        {
-            "id": 2,
-
-            "question": (
-                "Which approach is generally useful "
-                "when learning a new topic?"
-            ),
-
-            "options": [
-                "Practice and revision",
-                "Never practicing",
-                "Only memorizing the title",
-                "Skipping examples",
-            ],
-
-            "answer": 0,
-        },
-
-        {
-            "id": 3,
-
-            "question": (
-                "What helps improve understanding?"
-            ),
-
-            "options": [
-                "Examples and practice",
-                "Avoiding questions",
-                "Skipping notes",
-                "Not reviewing mistakes",
-            ],
-
-            "answer": 0,
-        },
-
-        {
-            "id": 4,
-
-            "question": (
-                "What should you do after making a mistake?"
-            ),
-
-            "options": [
-                "Review and understand it",
-                "Ignore it",
-                "Delete your notes",
-                "Stop practicing",
-            ],
-
-            "answer": 0,
-        },
-
-        {
-            "id": 5,
-
-            "question": (
-                "Which habit is useful for exam preparation?"
-            ),
-
-            "options": [
-                "Regular revision",
-                "No revision",
-                "Only studying at the last minute",
-                "Avoiding practice tests",
-            ],
-
-            "answer": 0,
-        },
-    ]
-
-    questions = (
-        base_questions[:count]
-    )
-
-    quiz_id = str(
-        uuid4()
-    )
-
-    quizzes[
-        quiz_id
-    ] = {
-
+    quiz_id = str(uuid4())
+    quizzes[quiz_id] = {
         "course_id": data.course_id,
-
-        "user_id": str(
-            user.id
-        ),
-
+        "user_id": str(user.id),
         "questions": questions,
+        "topic": focus_topic,
+        "difficulty": difficulty,
+        "created_at": now_iso(),
     }
 
     return {
-
         "quiz_id": quiz_id,
-
         "course_id": data.course_id,
-
-        "topic": data.topic,
-
-        "difficulty": data.difficulty,
-
+        "topic": focus_topic,
+        "difficulty": difficulty,
+        "source_label": source_label,
         "questions": [
-
-            {
-                "id": question["id"],
-
-                "question": question[
-                    "question"
-                ],
-
-                "options": question[
-                    "options"
-                ],
-            }
-
-            for question in questions
+            {"id": item["id"], "question": item["question"], "options": item["options"], "topic": item["topic"], "difficulty": item["difficulty"], "source": item["source"]}
+            for item in questions
         ],
     }
 
@@ -2399,197 +2789,99 @@ def generate_quiz(
 # QUIZ SUBMISSION
 # ============================================================
 
-@app.post(
-    "/api/quiz/submit"
-)
+@app.post("/api/quiz/submit")
 def submit_quiz(
     data: QuizSubmit,
-    authorization: Optional[str] = Header(
-        default=None
-    ),
+    authorization: Optional[str] = Header(default=None),
 ):
+    user = get_current_user(authorization)
+    token = extract_bearer_token(authorization)
+    user_id = str(user.id)
+    quiz_id = str(data.quiz_id or "")
+    quiz = quizzes.get(quiz_id)
+    if not quiz:
+        raise HTTPException(status_code=404, detail="This quiz has expired or the server restarted. Please generate a new quiz and submit it again.")
+    if quiz.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Quiz does not belong to this user.")
 
-    user = get_current_user(
-        authorization
-    )
+    course_id = str(quiz.get("course_id") or "")
+    if data.course_id and str(data.course_id) != course_id:
+        raise HTTPException(status_code=403, detail="This quiz belongs to a different course.")
+    course = get_user_course(course_id, user_id, token)
+    questions = quiz.get("questions") or []
+    if not questions:
+        raise HTTPException(status_code=400, detail="This quiz has no questions. Please generate a new quiz.")
 
-    user_id = str(
-        user.id
-    )
+    score = 0
+    topic_stats = {}
+    results = []
+    for question in questions:
+        question_id = str(question["id"])
+        raw_answer = data.answers.get(question_id)
+        try:
+            selected_index = int(raw_answer) if raw_answer is not None else None
+        except (TypeError, ValueError):
+            selected_index = None
+        correct_index = int(question["correct_answer"])
+        options = question["options"]
+        is_correct = selected_index == correct_index and selected_index is not None
+        if is_correct:
+            score += 1
+        topic_name = str(question.get("topic") or quiz.get("topic") or "General")
+        if topic_name not in topic_stats:
+            topic_stats[topic_name] = {"topic": topic_name, "correct": 0, "total": 0}
+        topic_stats[topic_name]["total"] += 1
+        if is_correct:
+            topic_stats[topic_name]["correct"] += 1
+        selected_text = options[selected_index] if selected_index is not None and 0 <= selected_index < len(options) else "Not answered"
+        correct_text = options[correct_index]
+        results.append({
+            "question_id": question_id,
+            "question": question["question"],
+            "options": options,
+            "selected_answer": selected_index,
+            "correct_answer": correct_index,
+            "selected_option": selected_text,
+            "correct_option": correct_text,
+            "is_correct": is_correct,
+            "explanation": question.get("explanation") or "",
+            "topic": topic_name,
+            "difficulty": question.get("difficulty") or quiz.get("difficulty") or "medium",
+            "source": question.get("source") or "Course curriculum",
+        })
 
-    # --------------------------------------------------------
-    # GENERATED QUIZ
-    # --------------------------------------------------------
+    total = len(questions)
+    accuracy = round((score / total) * 100) if total else 0
+    topic_breakdown = []
+    for stat in topic_stats.values():
+        topic_accuracy = round((stat["correct"] / stat["total"]) * 100) if stat["total"] else 0
+        topic_breakdown.append({"topic": stat["topic"], "correct": stat["correct"], "total": stat["total"], "accuracy": topic_accuracy})
+    weak_topics = [item["topic"] for item in topic_breakdown if item["accuracy"] < 60]
+    strong_topics = [item["topic"] for item in topic_breakdown if item["accuracy"] >= 80]
 
-    if (
-        data.quiz_id
-        and data.quiz_id in quizzes
-    ):
-
-        quiz = quizzes[
-            data.quiz_id
-        ]
-
-        if quiz.get(
-            "user_id"
-        ) != user_id:
-
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    "Quiz does not belong "
-                    "to this user."
-                ),
-            )
-
-        score = 0
-
-        questions = quiz[
-            "questions"
-        ]
-
-        for question in questions:
-
-            question_id = str(
-                question["id"]
-            )
-
-            submitted = (
-                data.answers.get(
-                    question_id
-                )
-            )
-
-            if submitted == question[
-                "answer"
-            ]:
-
-                score += 1
-
-        total = len(
-            questions
-        )
-
-    # --------------------------------------------------------
-    # BASIC QUIZ FALLBACK
-    # --------------------------------------------------------
-
+    old_progress = int(course.get("progress") or 0)
+    if accuracy >= 80:
+        new_progress = min(100, old_progress + 10)
+    elif accuracy >= 50:
+        new_progress = min(100, old_progress + 5)
     else:
-
-        correct_answers = {
-
-            "1": "Option A",
-
-            "2": "Option B",
-
-            "3": "Option C",
-        }
-
-        score = 0
-
-        for (
-            question_id,
-            answer
-        ) in data.answers.items():
-
-            if (
-
-                question_id
-                in correct_answers
-
-                and answer
-                == correct_answers[
-                    question_id
-                ]
-
-            ):
-
-                score += 1
-
-        total = len(
-            correct_answers
-        )
-
-    # --------------------------------------------------------
-    # SCORE
-    # --------------------------------------------------------
-
-    percentage = (
-
-        int(
-            (
-                score
-                / total
-            )
-            * 100
-        )
-
-        if total
-
-        else 0
-    )
-
-    # --------------------------------------------------------
-    # UPDATE COURSE PROGRESS
-    # --------------------------------------------------------
-
-    if data.course_id:
-
-        course = get_user_course(
-            data.course_id,
-            user_id,
-            extract_bearer_token(authorization),
-        )
-
-        old_progress = (
-            course["progress"]
-        )
-
-        if percentage >= 80:
-
-            new_progress = min(
-                100,
-                old_progress + 10,
-            )
-
-        elif percentage >= 50:
-
-            new_progress = min(
-                100,
-                old_progress + 5,
-            )
-
-        else:
-
-            new_progress = (
-                old_progress
-            )
-
-        completed = (
-            new_progress >= 100
-        )
-
-        persist_progress(
-            data.course_id,
-            user_id,
-            new_progress,
-            completed,
-            extract_bearer_token(authorization),
-        )
+        new_progress = old_progress
+    persist_progress(course_id, user_id, new_progress, new_progress >= 100, token)
+    quizzes.pop(quiz_id, None)
 
     return {
-
+        "quiz_id": quiz_id,
         "score": score,
-
         "total": total,
-
-        "percentage": percentage,
-
-        "message": (
-            "Quiz submitted successfully"
-        ),
+        "accuracy": accuracy,
+        "percentage": accuracy,
+        "topic_breakdown": topic_breakdown,
+        "results": results,
+        "weak_topics": weak_topics,
+        "strong_topics": strong_topics,
+        "message": "Quiz submitted successfully.",
+        "course_progress": new_progress,
     }
-
 
 # ============================================================
 # DASHBOARD
