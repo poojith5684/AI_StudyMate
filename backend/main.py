@@ -2698,26 +2698,31 @@ def test(
     }
 
 # ============================================================
-# CODING PRACTICE (C / GCC)
-# The compiler runs inside the external Judge0 sandbox; user code
-# is never executed directly in the StudyMate API process.
+# COURSE-AWARE CODING PRACTICE (C / Python / DSA)
+# All user code runs in Judge0's sandbox, not inside this API process.
 # ============================================================
 
 import time as _coding_time
+import re as _coding_re
 from concurrent.futures import ThreadPoolExecutor as _CodingPool
 
 
 class CodingRunRequest(BaseModel):
     source_code: str
     stdin: str = ""
+    course_id: Optional[str] = None
+    language: Optional[str] = None
 
 
 class CodingSubmitRequest(BaseModel):
     problem_id: str
     source_code: str
+    course_id: Optional[str] = None
+    language: Optional[str] = None
 
 
-_CODING_PROBLEMS = [
+# Keep the existing C fundamentals problem bank exactly as it is.
+_C_BASIC_PROBLEMS = [
     {
         "id": "sum-two-numbers",
         "title": "Sum of Two Numbers",
@@ -2831,11 +2836,124 @@ _CODING_PROBLEMS = [
 ]
 
 
-def _coding_public_problem(problem):
-    return {key: problem[key] for key in (
-        "id", "title", "difficulty", "description", "examples",
-        "constraints", "starter_code", "tags"
-    )}
+def _cp_problem(problem_id, title, difficulty, description, starter_code, tags, test_cases, constraints=None):
+    """Build a problem record from (stdin, expected-output) pairs."""
+    tests = [{"stdin": str(stdin), "expected": str(expected)} for stdin, expected in test_cases]
+    examples = [
+        {"input": str(stdin).rstrip("\n"), "output": str(expected)}
+        for stdin, expected in test_cases[:2]
+    ]
+    return {
+        "id": problem_id,
+        "title": title,
+        "difficulty": difficulty,
+        "description": description,
+        "examples": examples,
+        "constraints": constraints or ["Read input from standard input.", "Print only the requested result."],
+        "starter_code": starter_code,
+        "tags": tags,
+        "tests": tests,
+    }
+
+
+_C_DSA_PROBLEMS = [
+    _cp_problem("c-dsa-linear-search", "Linear Search", "Easy", "Read N, then N integers, then a target. Print the zero-based index of its first occurrence, or -1 if missing.",
+        '#include <stdio.h>\nint main(void) {\n    int n, a[1000], target;\n    if (scanf("%d", &n) != 1) return 0;\n    for (int i=0; i<n; i++) scanf("%d", &a[i]);\n    scanf("%d", &target);\n    // Find the first matching index and print it, or -1.\n    return 0;\n}\n', ["Arrays", "Searching"], [("5\n2 4 6 8 10\n6\n", "2"), ("4\n1 3 5 7\n2\n", "-1"), ("1\n9\n9\n", "0")]),
+    _cp_problem("c-dsa-binary-search", "Binary Search", "Medium", "The N integers are sorted in ascending order. Read N, the array, and a target. Print its zero-based index, or -1 if absent.",
+        '#include <stdio.h>\nint main(void) {\n    int n, a[1000], target;\n    if (scanf("%d", &n) != 1) return 0;\n    for (int i=0; i<n; i++) scanf("%d", &a[i]);\n    scanf("%d", &target);\n    // Implement binary search and print the result.\n    return 0;\n}\n', ["Arrays", "Binary Search"], [("5\n1 3 5 7 9\n7\n", "3"), ("5\n1 3 5 7 9\n2\n", "-1"), ("1\n4\n4\n", "0")]),
+    _cp_problem("c-dsa-reverse-array", "Reverse an Array", "Easy", "Read N followed by N integers. Print the elements in reverse order, separated by one space.",
+        '#include <stdio.h>\nint main(void) {\n    int n, a[1000];\n    if (scanf("%d", &n) != 1) return 0;\n    for (int i=0; i<n; i++) scanf("%d", &a[i]);\n    // Print the array from the last element to the first.\n    return 0;\n}\n', ["Arrays", "Two Pointers"], [("5\n1 2 3 4 5\n", "5 4 3 2 1"), ("3\n9 -1 2\n", "2 -1 9"), ("1\n42\n", "42")]),
+    _cp_problem("c-dsa-bubble-sort", "Bubble Sort", "Medium", "Read N and N integers. Sort them in ascending order using the bubble-sort idea and print them separated by spaces.",
+        '#include <stdio.h>\nint main(void) {\n    int n, a[1000];\n    if (scanf("%d", &n) != 1) return 0;\n    for (int i=0; i<n; i++) scanf("%d", &a[i]);\n    // Implement bubble sort, then print the sorted array.\n    return 0;\n}\n', ["Sorting", "Arrays"], [("5\n5 1 4 2 8\n", "1 2 4 5 8"), ("4\n-1 3 0 3\n", "-1 0 3 3"), ("1\n7\n", "7")]),
+    _cp_problem("c-dsa-second-largest", "Second Largest Distinct Element", "Medium", "Read N integers and print the second-largest distinct value. If it does not exist, print -1.",
+        '#include <stdio.h>\nint main(void) {\n    int n, a[1000];\n    if (scanf("%d", &n) != 1) return 0;\n    for (int i=0; i<n; i++) scanf("%d", &a[i]);\n    // Find the second-largest DISTINCT value; otherwise print -1.\n    return 0;\n}\n', ["Arrays", "Sorting"], [("5\n4 1 7 7 3\n", "4"), ("3\n5 5 5\n", "-1"), ("4\n-2 -1 -5 -3\n", "-2")]),
+    _cp_problem("c-dsa-frequency", "Count Target Frequency", "Easy", "Read N, N integers, and a target X. Print how many times X occurs in the array.",
+        '#include <stdio.h>\nint main(void) {\n    int n, a[1000], x, count=0;\n    if (scanf("%d", &n) != 1) return 0;\n    for (int i=0; i<n; i++) scanf("%d", &a[i]);\n    scanf("%d", &x);\n    // Count and print occurrences of x.\n    return 0;\n}\n', ["Arrays", "Counting"], [("6\n1 2 2 3 2 4\n2\n", "3"), ("4\n1 3 5 7\n4\n", "0"), ("1\n9\n9\n", "1")]),
+    _cp_problem("c-dsa-max-subarray", "Maximum Subarray Sum", "Hard", "Read N and N integers. Print the maximum sum of any non-empty contiguous subarray.",
+        '#include <stdio.h>\nint main(void) {\n    int n, a[1000];\n    if (scanf("%d", &n) != 1) return 0;\n    for (int i=0; i<n; i++) scanf("%d", &a[i]);\n    // Use Kadane\'s algorithm or an equivalent linear-time method.\n    return 0;\n}\n', ["Arrays", "Kadane's Algorithm"], [("5\n-2 1 -3 4 -1\n", "4"), ("3\n-5 -2 -8\n", "-2"), ("5\n1 2 3 -2 5\n", "9")]),
+    _cp_problem("c-dsa-remove-duplicates", "Remove Duplicates from Sorted Array", "Medium", "Read N sorted integers. Print each distinct value once, preserving ascending order.",
+        '#include <stdio.h>\nint main(void) {\n    int n, a[1000];\n    if (scanf("%d", &n) != 1) return 0;\n    for (int i=0; i<n; i++) scanf("%d", &a[i]);\n    // Print each value only if it differs from the previous value.\n    return 0;\n}\n', ["Arrays", "Two Pointers"], [("7\n1 1 2 2 2 4 5\n", "1 2 4 5"), ("4\n-1 -1 0 2\n", "-1 0 2"), ("1\n3\n", "3")]),
+]
+
+_PYTHON_BASIC_PROBLEMS = [
+    _cp_problem("py-sum-two-numbers", "Sum of Two Numbers", "Easy", "Read two integers and print their sum.",
+        "a, b = map(int, input().split())\n# Print the sum of a and b\n", ["Basics", "Arithmetic"], [("3 5\n", "8"), ("-2 7\n", "5"), ("100 250\n", "350")]),
+    _cp_problem("py-even-or-odd", "Even or Odd", "Easy", "Read an integer. Print Even if divisible by 2, otherwise print Odd.",
+        "n = int(input())\n# Print Even or Odd\n", ["Conditions", "Modulo"], [("4\n", "Even"), ("7\n", "Odd"), ("0\n", "Even")]),
+    _cp_problem("py-largest-three", "Largest of Three Numbers", "Easy", "Read three integers and print the largest.",
+        "a, b, c = map(int, input().split())\n# Print the largest number\n", ["Conditions", "Comparisons"], [("3 9 5\n", "9"), ("-2 -7 -4\n", "-2"), ("8 8 2\n", "8")]),
+    _cp_problem("py-factorial", "Factorial", "Easy", "Read a non-negative integer N and print N!. By definition, 0! is 1.",
+        "n = int(input())\n# Calculate and print n factorial\n", ["Loops", "Math"], [("5\n", "120"), ("0\n", "1"), ("1\n", "1")]),
+    _cp_problem("py-prime-number", "Prime Number Check", "Medium", "Read N. Print Prime if N is prime, otherwise print Not Prime. Numbers below 2 are not prime.",
+        "n = int(input())\n# Check primality and print the required label\n", ["Loops", "Number Theory"], [("7\n", "Prime"), ("1\n", "Not Prime"), ("12\n", "Not Prime"), ("2\n", "Prime")]),
+    _cp_problem("py-reverse-number", "Reverse a Number", "Easy", "Read a non-negative integer and print its digits in reverse order.",
+        "n = int(input())\n# Reverse the digits and print the result\n", ["Loops", "Digits"], [("1234\n", "4321"), ("500\n", "5"), ("0\n", "0")]),
+    _cp_problem("py-palindrome-number", "Palindrome Number", "Easy", "Read a non-negative integer and print Yes if it reads the same backwards, otherwise No.",
+        "n = input().strip()\n# Check whether n is a palindrome\n", ["Strings", "Digits"], [("121\n", "Yes"), ("123\n", "No"), ("7\n", "Yes")]),
+    _cp_problem("py-fibonacci-nth", "Nth Fibonacci Number", "Medium", "Read N and print F(N), where F(0)=0 and F(1)=1.",
+        "n = int(input())\n# Compute F(n) iteratively and print it\n", ["Loops", "Dynamic Programming"], [("7\n", "13"), ("0\n", "0"), ("10\n", "55")]),
+    _cp_problem("py-array-sum", "Sum of List Elements", "Medium", "Read N, then N integers. Print their sum.",
+        "n = int(input())\nvalues = list(map(int, input().split()))\n# Print the sum of the first n values\n", ["Lists", "Loops"], [("5\n1 2 3 4 5\n", "15"), ("4\n-1 2 -3 4\n", "2"), ("1\n42\n", "42")]),
+    _cp_problem("py-count-vowels", "Count Vowels", "Easy", "Read one line and count English vowels (a, e, i, o, u), case-insensitively.",
+        "text = input()\n# Count and print the vowels in text\n", ["Strings", "Characters"], [("StudyMate\n", "3"), ("AEIOU\n", "5"), ("rhythm\n", "0")]),
+]
+
+_PYTHON_DSA_PROBLEMS = [
+    _cp_problem("py-dsa-linear-search", "Linear Search", "Easy", "Read N, a list of N integers, and a target. Print the first zero-based index of the target, or -1.",
+        "n = int(input())\narr = list(map(int, input().split()))\ntarget = int(input())\n# Find and print the target's first index, or -1\n", ["Lists", "Searching"], [("5\n2 4 6 8 10\n6\n", "2"), ("4\n1 3 5 7\n2\n", "-1"), ("1\n9\n9\n", "0")]),
+    _cp_problem("py-dsa-binary-search", "Binary Search", "Medium", "The list is sorted ascending. Read N, its values, and a target. Print its zero-based index, or -1.",
+        "n = int(input())\narr = list(map(int, input().split()))\ntarget = int(input())\n# Implement binary search and print the result\n", ["Binary Search", "Lists"], [("5\n1 3 5 7 9\n7\n", "3"), ("5\n1 3 5 7 9\n2\n", "-1"), ("1\n4\n4\n", "0")]),
+    _cp_problem("py-dsa-reverse-array", "Reverse an Array", "Easy", "Read N followed by N integers. Print them in reverse order, separated by spaces.",
+        "n = int(input())\narr = list(map(int, input().split()))\n# Print the reversed array\n", ["Lists", "Two Pointers"], [("5\n1 2 3 4 5\n", "5 4 3 2 1"), ("3\n9 -1 2\n", "2 -1 9"), ("1\n42\n", "42")]),
+    _cp_problem("py-dsa-bubble-sort", "Bubble Sort", "Medium", "Read N integers and print the values sorted in ascending order. Implement bubble sort rather than calling sort().",
+        "n = int(input())\narr = list(map(int, input().split()))\n# Implement bubble sort, then print the array\n", ["Sorting", "Lists"], [("5\n5 1 4 2 8\n", "1 2 4 5 8"), ("4\n-1 3 0 3\n", "-1 0 3 3"), ("1\n7\n", "7")]),
+    _cp_problem("py-dsa-second-largest", "Second Largest Distinct Element", "Medium", "Read N integers and print the second-largest distinct value. If there is no second distinct value, print -1.",
+        "n = int(input())\narr = list(map(int, input().split()))\n# Find and print the second-largest distinct value, or -1\n", ["Lists", "Sorting"], [("5\n4 1 7 7 3\n", "4"), ("3\n5 5 5\n", "-1"), ("4\n-2 -1 -5 -3\n", "-2")]),
+    _cp_problem("py-dsa-frequency", "Count Target Frequency", "Easy", "Read N, N integers, and a target X. Print the number of occurrences of X.",
+        "n = int(input())\narr = list(map(int, input().split()))\nx = int(input())\n# Count and print occurrences of x\n", ["Lists", "Hashing"], [("6\n1 2 2 3 2 4\n2\n", "3"), ("4\n1 3 5 7\n4\n", "0"), ("1\n9\n9\n", "1")]),
+    _cp_problem("py-dsa-max-subarray", "Maximum Subarray Sum", "Hard", "Read N integers and print the maximum sum of any non-empty contiguous subarray.",
+        "n = int(input())\narr = list(map(int, input().split()))\n# Use Kadane's algorithm and print the maximum sum\n", ["Arrays", "Kadane's Algorithm"], [("5\n-2 1 -3 4 -1\n", "4"), ("3\n-5 -2 -8\n", "-2"), ("5\n1 2 3 -2 5\n", "9")]),
+    _cp_problem("py-dsa-remove-duplicates", "Remove Duplicates from Sorted List", "Medium", "Read N sorted integers. Print each distinct value once, preserving ascending order.",
+        "n = int(input())\narr = list(map(int, input().split()))\n# Remove adjacent duplicates and print each distinct value\n", ["Lists", "Two Pointers"], [("7\n1 1 2 2 2 4 5\n", "1 2 4 5"), ("4\n-1 -1 0 2\n", "-1 0 2"), ("1\n3\n", "3")]),
+]
+
+
+def _coding_public_problem(problem, language, track):
+    return {
+        key: problem[key]
+        for key in ("id", "title", "difficulty", "description", "examples", "constraints", "starter_code", "tags")
+    } | {"language": language, "track": track}
+
+
+def _coding_profile(authorization, course_id, language_hint=None):
+    # All course-specific requests are scoped to the authenticated user's own course.
+    user = get_current_user(authorization)
+    course = {}
+    if course_id:
+        course = get_user_course(course_id, str(user.id), extract_bearer_token(authorization))
+
+    text = " ".join(str(course.get(key) or "") for key in ("title", "subject", "description")).lower()
+    is_python = bool(_coding_re.search(r"\bpython\b|\bpy programming\b", text))
+    is_dsa = any(term in text for term in ("dsa", "data structure", "data structures", "algorithm", "algorithms"))
+
+    if course_id:
+        # Course metadata is authoritative; the client cannot force another language.
+        language = "python" if is_python else "c"
+    else:
+        language = "python" if str(language_hint or "").lower() in ("py", "python") else "c"
+
+    track = "dsa" if is_dsa else "basics"
+    return {"language": language, "track": track, "course_title": str(course.get("title") or "Coding Practice")}
+
+
+def _coding_problem_bank(profile):
+    if profile["language"] == "python" and profile["track"] == "dsa":
+        return _PYTHON_DSA_PROBLEMS
+    if profile["language"] == "python":
+        return _PYTHON_BASIC_PROBLEMS
+    if profile["track"] == "dsa":
+        return _C_DSA_PROBLEMS
+    return _C_BASIC_PROBLEMS
 
 
 def _coding_judge_headers():
@@ -2846,7 +2964,7 @@ def _coding_judge_headers():
     return headers
 
 
-def _coding_execute_c(source_code: str, stdin: str):
+def _coding_execute(source_code: str, stdin: str, language: str = "c"):
     if not source_code or not source_code.strip():
         raise HTTPException(status_code=400, detail="Source code is required.")
     if len(source_code) > 25000:
@@ -2856,9 +2974,17 @@ def _coding_execute_c(source_code: str, stdin: str):
 
     judge_url = os.getenv("JUDGE0_BASE_URL", "https://ce.judge0.com").rstrip("/")
     headers = _coding_judge_headers()
+    try:
+        if language == "python":
+            language_id = int(os.getenv("JUDGE0_PYTHON_LANGUAGE_ID", "71"))
+        else:
+            language_id = int(os.getenv("JUDGE0_C_LANGUAGE_ID", "103"))
+    except ValueError:
+        raise HTTPException(status_code=500, detail="Judge0 language ID configuration must be numeric.")
+
     submission_payload = {
         "source_code": source_code,
-        "language_id": 103,  # C (GCC 14.1.0) on the Judge0 CE language catalogue.
+        "language_id": language_id,
         "stdin": stdin or "",
         "cpu_time_limit": 2,
         "cpu_extra_time": 0.5,
@@ -2873,14 +2999,11 @@ def _coding_execute_c(source_code: str, stdin: str):
             timeout=15.0,
         )
         if created.status_code in (401, 403):
-            raise HTTPException(
-                status_code=502,
-                detail="The C execution service requires authorization. Configure JUDGE0_AUTH_TOKEN in the backend environment."
-            )
+            raise HTTPException(status_code=502, detail="The C/Python execution service requires authorization. Configure JUDGE0_AUTH_TOKEN in the backend environment.")
         created.raise_for_status()
         token = (created.json() or {}).get("token")
         if not token:
-            raise HTTPException(status_code=502, detail="The C execution service did not return a submission token.")
+            raise HTTPException(status_code=502, detail="The code execution service did not return a submission token.")
 
         fields = "stdout,stderr,compile_output,message,status,status_id,time,memory"
         for _ in range(24):
@@ -2892,15 +3015,14 @@ def _coding_execute_c(source_code: str, stdin: str):
                 timeout=10.0,
             )
             if result_response.status_code in (401, 403):
-                raise HTTPException(status_code=502, detail="The C execution service rejected authorization. Check JUDGE0_AUTH_TOKEN.")
+                raise HTTPException(status_code=502, detail="The code execution service rejected authorization. Check JUDGE0_AUTH_TOKEN.")
             result_response.raise_for_status()
             result = result_response.json() or {}
             status = result.get("status") or {}
             status_id = result.get("status_id") or status.get("id")
             if status_id not in (1, 2):
-                status_description = status.get("description") or "Unknown"
                 return {
-                    "status": status_description,
+                    "status": status.get("description") or "Unknown",
                     "stdout": result.get("stdout") or "",
                     "stderr": result.get("stderr") or "",
                     "compile_output": result.get("compile_output") or "",
@@ -2912,49 +3034,51 @@ def _coding_execute_c(source_code: str, stdin: str):
     except HTTPException:
         raise
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="The C execution service timed out. Please try again.")
+        raise HTTPException(status_code=504, detail="The code execution service timed out. Please try again.")
     except httpx.HTTPStatusError as exc:
         print("Judge0 HTTP error:", exc.response.status_code, exc.response.text[:500])
-        raise HTTPException(status_code=502, detail=f"C execution service returned HTTP {exc.response.status_code}.")
+        raise HTTPException(status_code=502, detail=f"Code execution service returned HTTP {exc.response.status_code}.")
     except Exception as exc:
         print("Judge0 execution error:", repr(exc))
-        raise HTTPException(status_code=502, detail="Could not reach the C execution service. Please try again later.")
+        raise HTTPException(status_code=502, detail="Could not reach the code execution service. Please try again later.")
 
 
 @app.get("/api/coding/problems")
-def coding_list_problems(authorization: Optional[str] = Header(default=None)):
-    get_current_user(authorization)
-    return [_coding_public_problem(problem) for problem in _CODING_PROBLEMS]
+def coding_list_problems(
+    course_id: Optional[str] = None,
+    language: Optional[str] = None,
+    authorization: Optional[str] = Header(default=None),
+):
+    profile = _coding_profile(authorization, course_id, language)
+    bank = _coding_problem_bank(profile)
+    return [_coding_public_problem(problem, profile["language"], profile["track"]) for problem in bank]
 
 
 @app.post("/api/coding/run")
 def coding_run_code(data: CodingRunRequest, authorization: Optional[str] = Header(default=None)):
-    get_current_user(authorization)
-    result = _coding_execute_c(data.source_code, data.stdin or "")
-    return result
+    profile = _coding_profile(authorization, data.course_id, data.language)
+    return _coding_execute(data.source_code, data.stdin or "", profile["language"])
 
 
 @app.post("/api/coding/submit")
 def coding_submit_code(data: CodingSubmitRequest, authorization: Optional[str] = Header(default=None)):
-    user = get_current_user(authorization)
+    profile = _coding_profile(authorization, data.course_id, data.language)
     if not data.source_code or not data.source_code.strip():
         raise HTTPException(status_code=400, detail="Source code is required.")
     if len(data.source_code) > 25000:
         raise HTTPException(status_code=413, detail="Source code is too large (maximum 25 KB).")
 
-    problem = next((item for item in _CODING_PROBLEMS if item["id"] == data.problem_id), None)
+    bank = _coding_problem_bank(profile)
+    problem = next((item for item in bank if item["id"] == data.problem_id), None)
     if problem is None:
-        raise HTTPException(status_code=404, detail="Coding problem not found.")
+        raise HTTPException(status_code=404, detail="Coding problem is not part of this course's practice set.")
 
-    # Expected outputs and test input are kept on the backend, not sent by the browser.
-    tests = problem["tests"]
     def run_one(test):
         try:
-            result = _coding_execute_c(data.source_code, test["stdin"])
+            result = _coding_execute(data.source_code, test["stdin"], profile["language"])
             expected = str(test["expected"]).strip()
             actual = str(result.get("stdout") or "").strip()
-            accepted_execution = result.get("status") == "Accepted"
-            passed = accepted_execution and actual == expected
+            passed = result.get("status") == "Accepted" and actual == expected
             return {
                 "passed": passed,
                 "expected": expected,
@@ -2967,15 +3091,8 @@ def coding_submit_code(data: CodingSubmitRequest, authorization: Optional[str] =
             return {"passed": False, "expected": str(test["expected"]).strip(), "actual": "", "status": f"Runner Error ({exc.status_code})", "stderr": str(exc.detail), "compile_output": ""}
 
     with _CodingPool(max_workers=3) as pool:
-        raw_results = list(pool.map(run_one, tests))
+        raw_results = list(pool.map(run_one, problem["tests"]))
 
     results = [dict(case_number=index + 1, **item) for index, item in enumerate(raw_results)]
     passed_count = sum(1 for item in results if item["passed"])
-    accepted = passed_count == len(tests)
-
-    return {
-        "accepted": accepted,
-        "passed": passed_count,
-        "total": len(tests),
-        "results": results,
-    }
+    return {"accepted": passed_count == len(problem["tests"]), "passed": passed_count, "total": len(problem["tests"]), "results": results}

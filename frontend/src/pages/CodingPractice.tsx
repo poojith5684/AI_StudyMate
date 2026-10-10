@@ -41,6 +41,8 @@ type Problem = {
   constraints: string[];
   starter_code: string;
   tags: string[];
+  language: 'c' | 'python';
+  track: 'basics' | 'dsa';
 };
 
 type RunResult = {
@@ -141,7 +143,7 @@ export default function CodingPractice() {
       setBusy('load');
       setError('');
       try {
-        const data = await codingApi.problems();
+        const data = await codingApi.problems(courseId);
         if (!alive) return;
 
         if (!Array.isArray(data)) {
@@ -166,7 +168,7 @@ export default function CodingPractice() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [courseId]);
 
   const activeProblem = useMemo(
     () => problems.find((problem) => problem.id === activeId) || null,
@@ -204,6 +206,12 @@ export default function CodingPractice() {
     ? Math.round((solvedCount / problems.length) * 100)
     : 0;
   const isBusy = busy !== '';
+  const codeLanguage = activeProblem?.language ?? problems[0]?.language ?? 'c';
+  const isPython = codeLanguage === 'python';
+  const codeLanguageLabel = isPython ? 'Python 3' : 'C · GCC';
+  const problemListTitle = activeProblem?.track === 'dsa' || problems[0]?.track === 'dsa'
+    ? 'DSA problems'
+    : (isPython ? 'Python problems' : 'C problems');
 
   const persistCode = (value: string) => {
     setSourceCode(value);
@@ -224,7 +232,7 @@ export default function CodingPractice() {
       return;
     }
     if (!sourceCode.trim()) {
-      setError('Enter your C code before running it.');
+      setError('Enter your code before running it.');
       return;
     }
 
@@ -239,6 +247,8 @@ export default function CodingPractice() {
       const result = await codingApi.run({
         source_code: sourceCode,
         stdin: customInput,
+        course_id: courseId,
+        language: activeProblem.language,
       });
       setRunResult(result as RunResult);
     } catch (err) {
@@ -254,7 +264,7 @@ export default function CodingPractice() {
       return;
     }
     if (!sourceCode.trim()) {
-      setError('Enter your C code before validating it.');
+      setError('Enter your code before validating it.');
       return;
     }
 
@@ -269,6 +279,8 @@ export default function CodingPractice() {
       const raw = await codingApi.submit({
         problem_id: activeProblem.id,
         source_code: sourceCode,
+        course_id: courseId,
+        language: activeProblem.language,
       });
       const result = raw as SubmitResult;
 
@@ -374,7 +386,7 @@ export default function CodingPractice() {
           <div className="cp-brand-name">AI <strong>StudyMate</strong><span>Coding Lab</span></div>
         </div>
         <div className="cp-topbar-right">
-          <span className="cp-language-pill"><span /> C · GCC</span>
+          <span className="cp-language-pill"><span /> {codeLanguageLabel}</span>
           <span className="cp-solved-mini"><Trophy size={15} /> {solvedCount}/{problems.length} solved</span>
           <Link className="cp-exit-link" to={courseId ? `/courses/${courseId}` : '/dashboard'}>Exit practice</Link>
         </div>
@@ -383,7 +395,7 @@ export default function CodingPractice() {
       <div className="cp-workspace">
         <aside className="cp-sidebar">
           <div className="cp-sidebar-heading">
-            <div><span className="cp-eyebrow">PRACTICE ARENA</span><h1>C problems</h1></div>
+            <div><span className="cp-eyebrow">PRACTICE ARENA</span><h1>{problemListTitle}</h1></div>
             <span className="cp-count">{filteredProblems.length}</span>
           </div>
 
@@ -481,7 +493,7 @@ export default function CodingPractice() {
                 <div className="cp-meta-row">
                   <span className={`cp-difficulty large ${(activeProblem.difficulty || 'Easy').toLowerCase()}`}>{activeProblem.difficulty}</span>
                   <span><Timer size={14} /> 2 sec time limit</span>
-                  <span><Terminal size={14} /> C (GCC)</span>
+                  <span><Terminal size={14} /> {codeLanguageLabel}</span>
                 </div>
                 <p className="cp-description">{activeProblem.description}</p>
 
@@ -508,7 +520,7 @@ export default function CodingPractice() {
 
               <section className="cp-editor-panel">
                 <div className="cp-editor-header">
-                  <div className="cp-editor-title"><Code2 size={17} /><strong>Solution</strong><span className="cp-file-tab">solution.c</span></div>
+                  <div className="cp-editor-title"><Code2 size={17} /><strong>Solution</strong><span className="cp-file-tab">{isPython ? 'solution.py' : 'solution.c'}</span></div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button type="button" className="cp-reset-button" onClick={() => void copyCode()} disabled={isBusy} title="Copy code">
                       <Copy size={14} /> {copyLabel}
@@ -519,12 +531,12 @@ export default function CodingPractice() {
                   </div>
                 </div>
                 <div className="cp-editor-caption">
-                  <span><span className="cp-live-dot" /> C source editor</span>
+                  <span><span className="cp-live-dot" /> {isPython ? 'Python source editor' : 'C source editor'}</span>
                   <span>Ctrl+Enter: Run · Ctrl+Shift+Enter: Validate</span>
                 </div>
                 <textarea
                   className="cp-code-editor"
-                  aria-label="C code editor"
+                  aria-label="Code editor"
                   spellCheck={false}
                   autoCapitalize="off"
                   autoCorrect="off"
@@ -534,7 +546,7 @@ export default function CodingPractice() {
                   onKeyDown={handleEditorKeyDown}
                 />
                 <div className="cp-runbar">
-                  <div className="cp-runbar-note"><span className="cp-dot-green" /> Code runs in a sandboxed C environment</div>
+                  <div className="cp-runbar-note"><span className="cp-dot-green" /> Code runs in a sandboxed {codeLanguageLabel} environment</div>
                   <div className="cp-action-row">
                     <button type="button" className="cp-run-button" onClick={() => void runCode()} disabled={isBusy}>
                       {busy === 'run' ? <span className="cp-spinner" /> : <Play size={15} fill="currentColor" />}

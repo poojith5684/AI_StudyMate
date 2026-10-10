@@ -401,7 +401,7 @@ export default function CourseDetail() {
 
               <div className="tool-content">
                 <h3>Coding Practice</h3>
-                <p>Write C programs, run your code and validate hidden test cases.</p>
+                <p>Practice problems for this course's language and topics, run your code and validate test cases.</p>
               </div>
 
               <div className="tool-arrow">→</div>
