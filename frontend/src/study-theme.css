@@ -1,0 +1,486 @@
+/* AI StudyMate — Aurora Academy theme
+   Add this stylesheet after index.css in main.tsx. */
+:root {
+  color-scheme: dark;
+  --sm-bg: #05091c;
+  --sm-bg-soft: #0a1230;
+  --sm-panel: rgba(13, 24, 54, 0.78);
+  --sm-panel-solid: #101b3a;
+  --sm-line: rgba(157, 156, 255, 0.20);
+  --sm-line-bright: rgba(130, 151, 255, 0.42);
+  --sm-text: #f3f5ff;
+  --sm-muted: #a4b0d1;
+  --sm-purple: #9367ff;
+  --sm-blue: #587dff;
+  --sm-cyan: #44e0ef;
+  --sm-pink: #fa8bd3;
+  --sm-gold: #ffd27a;
+  --sm-glow: 0 0 32px rgba(116, 87, 255, .18), 0 24px 60px rgba(0, 0, 0, .28);
+}
+
+html { scroll-behavior: smooth; background: var(--sm-bg); }
+body {
+  background: var(--sm-bg) !important;
+  color: var(--sm-text) !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  min-height: 100vh;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 8% 5%, rgba(102, 76, 255, .22), transparent 32%),
+    radial-gradient(ellipse at 94% 20%, rgba(26, 173, 230, .13), transparent 28%),
+    radial-gradient(ellipse at 72% 95%, rgba(202, 75, 255, .12), transparent 30%),
+    linear-gradient(145deg, #05091c 0%, #080e26 52%, #100b2b 100%);
+}
+#root { min-height: 100vh; isolation: isolate; }
+::selection { color: #fff; background: rgba(139, 92, 246, .58); }
+
+/* Make all primary page backgrounds use the same midnight aurora. */
+.study-home,
+.my-courses-page,
+.completed-page,
+.course-page,
+.resources-page,
+.cp-page,
+#root > div[style*="min-height: 100vh"] {
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(104, 82, 255, .16), transparent 32%),
+    radial-gradient(ellipse at 92% 16%, rgba(26, 174, 231, .09), transparent 28%),
+    linear-gradient(145deg, #05091c 0%, #080f27 54%, #100b2b 100%) !important;
+  color: var(--sm-text) !important;
+}
+.study-home, .my-courses-page, .completed-page, .course-page, .resources-page, .cp-page {
+  position: relative;
+  isolation: isolate;
+}
+.study-home::before, .my-courses-page::before, .completed-page::before,
+.course-page::before, .resources-page::before, .cp-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 0%, rgba(132, 97, 255, .075), transparent 45%);
+}
+
+/* Glass navigation bars across pages. */
+.glass-nav, .courses-nav, .top-nav, .topbar, .resources-nav, .cp-topbar,
+#root > div[style*="min-height: 100vh"] > nav {
+  background: rgba(7, 13, 35, .78) !important;
+  color: var(--sm-text) !important;
+  border-color: var(--sm-line) !important;
+  box-shadow: 0 12px 38px rgba(0, 0, 0, .22), inset 0 1px rgba(255,255,255,.045) !important;
+  backdrop-filter: blur(24px) saturate(155%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(155%) !important;
+}
+.brand, .resources-brand, .cp-brand-name, .nav-link, .back, .back-link, .back-button,
+.cp-back, .logout, .logout-btn, .user-name, .nav-right, .user-mini {
+  color: #dce5ff !important;
+}
+.nav-link:hover, .back:hover, .back-link:hover, .resources-brand:hover, .cp-back:hover {
+  color: #fff !important;
+  text-shadow: 0 0 18px rgba(120, 115, 255, .45);
+}
+.brand-icon, .course-symbol, .course-icon, .tool-icon, .resource-icon, .quick-icon,
+.current-course-icon, .material-icon, .empty-icon, .cp-brand-icon, .cp-language-pill,
+.progress-circle, .trophy, .stats {
+  border-color: rgba(153, 139, 255, .34) !important;
+  box-shadow: 0 0 24px rgba(105, 90, 255, .16), inset 0 1px rgba(255,255,255,.10) !important;
+}
+.brand-icon, .course-symbol, .course-icon, .tool-icon, .resource-icon, .quick-icon,
+.current-course-icon, .material-icon, .empty-icon, .cp-brand-icon {
+  background: linear-gradient(145deg, rgba(111, 83, 255, .28), rgba(34, 171, 232, .13)) !important;
+  color: #c1b3ff !important;
+}
+
+/* Glossy shared panels / cards. */
+.card, .course-card, .tool-card, .resource-card, .quick-card, .material-card,
+.progress-card, .error-card, .stat, .stats, .ai-note, .empty, .empty-materials,
+.error-box, .cp-sidebar, .cp-problem-panel, .cp-editor-panel, .cp-console-panel,
+.cp-example, .cp-test-case, .cp-output-result, .cp-submit-summary, .cp-empty-state {
+  background: linear-gradient(145deg, rgba(20, 31, 68, .89), rgba(8, 16, 42, .91)) !important;
+  border: 1px solid var(--sm-line) !important;
+  box-shadow: var(--sm-glow), inset 0 1px rgba(255,255,255,.055) !important;
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+}
+.card, .course-card, .tool-card, .resource-card, .quick-card, .material-card,
+.cp-problem-item, .cp-run-button, .cp-submit-button { transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, filter .22s ease !important; }
+.course-card:hover, .tool-card:hover, .resource-card:hover, .quick-card:hover, .material-card:hover,
+.cp-problem-item:hover, .card:hover {
+  transform: translateY(-4px);
+  border-color: var(--sm-line-bright) !important;
+  box-shadow: 0 0 32px rgba(113, 93, 255, .20), 0 24px 60px rgba(0,0,0,.30), inset 0 1px rgba(255,255,255,.07) !important;
+}
+.course-card h2, .course-card h3, .tool-card h3, .resource-card h3, .quick-card h3,
+.course-title, .page-title, .course-hero h1, h1, h2, h3 { color: var(--sm-text); }
+.course-label, .eyebrow, .section-label, .section-kicker, .cp-section-kicker, .resource-label {
+  color: #a99aff !important;
+  letter-spacing: .12em;
+}
+p, .subtitle, .course-description, .hero-description, .resource-card p, .tool-card p { color: var(--sm-muted); }
+
+/* Consistent fields and focus rings in login, registration, tutor, coding and search. */
+.input, input:not([type="checkbox"]):not([type="radio"]):not(.asm-login__input), textarea:not(.asm-login__input), select,
+.cp-search, .cp-custom-input, .cp-code-editor {
+  background: rgba(6, 13, 35, .88) !important;
+  color: var(--sm-text) !important;
+  border: 1px solid rgba(143, 151, 230, .25) !important;
+  border-radius: 12px !important;
+  box-shadow: inset 0 1px 8px rgba(0,0,0,.16) !important;
+}
+.input::placeholder, input::placeholder, textarea::placeholder { color: #7583aa !important; }
+.input:focus, input:focus, textarea:focus, select:focus,
+.cp-search:focus, .cp-custom-input:focus, .cp-code-editor:focus {
+  outline: none !important;
+  border-color: rgba(151, 121, 255, .9) !important;
+  box-shadow: 0 0 0 3px rgba(117, 89, 255, .18), 0 0 24px rgba(83, 119, 255, .14) !important;
+}
+
+/* Purple-to-blue action system. */
+.btn-primary, .primary-btn, .primary-button, .upload-button, .upload-small,
+.browse, .retry, .ai-note-button, .cp-submit-button, .cp-run-button,
+#root > div[style*="min-height: 100vh"] button[type="submit"] {
+  background: linear-gradient(110deg, #536dff 0%, #8a52f5 52%, #c052f4 100%) !important;
+  color: #fff !important;
+  border: 1px solid rgba(196, 177, 255, .45) !important;
+  box-shadow: 0 10px 28px rgba(98, 82, 255, .26), inset 0 1px rgba(255,255,255,.22) !important;
+  border-radius: 12px !important;
+  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease !important;
+}
+.btn-primary:hover, .primary-btn:hover, .primary-button:hover, .upload-button:hover,
+.ai-note-button:hover, .cp-submit-button:hover, .cp-run-button:hover,
+#root > div[style*="min-height: 100vh"] button[type="submit"]:hover {
+  transform: translateY(-2px) !important;
+  filter: brightness(1.08) !important;
+  box-shadow: 0 16px 36px rgba(119, 85, 255, .35), inset 0 1px rgba(255,255,255,.25) !important;
+}
+button:disabled { opacity: .62; cursor: not-allowed !important; }
+
+/* Authentication cards: brighter edge, softer glass, same visual language. */
+#root > div[style*="min-height: 100vh"] .card {
+  background: linear-gradient(150deg, rgba(23, 34, 72, .91), rgba(10, 15, 41, .92)) !important;
+  border: 1px solid rgba(160, 148, 255, .27) !important;
+  border-radius: 26px !important;
+  box-shadow: 0 28px 90px rgba(0,0,0,.38), 0 0 55px rgba(105, 85, 255, .16), inset 0 1px rgba(255,255,255,.08) !important;
+  backdrop-filter: blur(24px) saturate(140%) !important;
+}
+#root > div[style*="min-height: 100vh"] nav a,
+#root > div[style*="min-height: 100vh"] a { transition: color .18s ease, filter .18s ease; }
+#root > div[style*="min-height: 100vh"] a:hover { filter: brightness(1.16); }
+
+/* Dashboard ambience and progress accents. */
+.ambient { opacity: .24 !important; filter: blur(105px) !important; }
+.ambient-one { background: #7555ff !important; }
+.ambient-two { background: #24d7ed !important; }
+.ambient-three { background: #f267d6 !important; }
+.progress-track, .cp-progress-track { background: rgba(89, 104, 157, .24) !important; }
+.progress-fill, .cp-progress-fill { background: linear-gradient(90deg, #5277ff, #a455f5, #50d9ed) !important; box-shadow: 0 0 15px rgba(128, 94, 255, .28); }
+.course-arrow, .open-button, .tool-arrow { color: #b5a6ff !important; }
+.success-banner { background: rgba(26, 190, 137, .12) !important; border-color: rgba(67, 230, 181, .28) !important; }
+
+/* Coding practice inherits the same branded indigo/cyan surfaces. */
+.cp-page {
+  --cp-bg: #05091c !important;
+  --cp-panel: #0c1532 !important;
+  --cp-panel2: #111d40 !important;
+  --cp-line: rgba(157, 156, 255, .20) !important;
+  --cp-muted: #a4b0d1 !important;
+  --cp-text: #f3f5ff !important;
+  background: radial-gradient(ellipse at 75% 0%, rgba(102, 76, 255, .17), transparent 35%), linear-gradient(145deg, #05091c, #0a1230 62%, #100b2b) !important;
+}
+.cp-problem-item.selected, .cp-filter-row .active { background: rgba(100, 87, 255, .23) !important; border-color: rgba(160, 142, 255, .42) !important; }
+.cp-accepted-badge, .cp-output-status.good { color: #77f0c0 !important; }
+
+/* Responsive polish across navigation and card grids. */
+@media (max-width: 720px) {
+  #root > div[style*="min-height: 100vh"] { padding: 18px !important; }
+  #root > div[style*="min-height: 100vh"] .card { padding: 22px !important; border-radius: 22px !important; }
+  .glass-nav, .courses-nav, .top-nav, .topbar, .resources-nav, .cp-topbar { padding-left: 16px !important; padding-right: 16px !important; }
+  .nav-links { gap: 8px !important; }
+  .nav-link { font-size: 12px !important; }
+  .home-container, .page-container, .resources-container, .container { padding-left: 16px !important; padding-right: 16px !important; }
+  .course-grid, .courses-grid, .tools-grid, .resource-grid, .quick-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .user-mini span, .nav-right .user-name { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+
+.course-mark { display: inline-flex; align-items: center; justify-content: center; line-height: 0; flex: 0 0 auto; }
+.course-mark--java { color: #ffbd73; }
+.course-mark--sql { color: #69d9ff; }
+.course-mark--ai { color: #b7a4ff; }
+.course-mark--dsa { color: #8d9cff; }
+.course-mark--math { color: #ff9fcf; }
+.course-mark--web { color: #65e6d1; }
+.course-mark--network { color: #79c8ff; }
+.course-mark--terminal, .course-mark--hardware, .course-mark--code { color: #92a4ff; }
+.course-mark--notes, .course-mark--general { color: #c5b9ff; }
+
+
+/* ============================================================
+   AURORA ACADEMY — site-wide consistency pass
+   Keeps existing React behavior and only harmonizes appearance.
+   ============================================================ */
+:root {
+  --sm-radius-lg: 26px;
+  --sm-radius-md: 18px;
+  --sm-card-border: rgba(151, 145, 255, .22);
+}
+
+body, button, input, textarea, select {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+/* Give standalone screens (Tutor, Quiz, Progress, Login and Register)
+   the same midnight canvas even when their components use inline styles. */
+#root > div[style*="min-height: 100vh"] {
+  background:
+    radial-gradient(ellipse at 10% 0%, rgba(106, 82, 255, .20), transparent 34%),
+    radial-gradient(ellipse at 92% 25%, rgba(34, 211, 238, .095), transparent 30%),
+    radial-gradient(ellipse at 70% 100%, rgba(195, 80, 247, .10), transparent 32%),
+    linear-gradient(145deg, #05091c 0%, #080e26 54%, #100b2b 100%) !important;
+  color: var(--sm-text) !important;
+}
+
+/* Global surfaces used across old and newer pages. */
+.card,
+.error-card,
+.error-box,
+.empty,
+.empty-card,
+.empty-materials,
+.loading-card,
+.stat-card,
+.material-card,
+.progress-card,
+.roadmap-step,
+.quiz-question,
+.result-card {
+  background: linear-gradient(145deg, rgba(21, 32, 70, .88), rgba(8, 15, 40, .92)) !important;
+  color: var(--sm-text) !important;
+  border: 1px solid var(--sm-card-border) !important;
+  border-radius: var(--sm-radius-md) !important;
+  box-shadow: 0 18px 52px rgba(0, 0, 0, .20), inset 0 1px rgba(255, 255, 255, .06) !important;
+}
+
+/* Legacy inline navs and footer/input bars. */
+#root > div[style*="min-height: 100vh"] > nav,
+#root > div[style*="min-height: 100vh"] > div[style*="border-top"],
+#root > div[style*="min-height: 100vh"] > div[style*="border-bottom"] {
+  background: rgba(7, 13, 35, .82) !important;
+  border-color: var(--sm-line) !important;
+  color: var(--sm-text) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .18), inset 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: blur(24px) saturate(155%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(155%) !important;
+}
+
+/* Landing page feature cards and auth pages. */
+#root > div[style*="min-height: 100vh"] .card {
+  background: linear-gradient(150deg, rgba(23, 34, 72, .92), rgba(10, 15, 41, .94)) !important;
+  border: 1px solid rgba(160, 148, 255, .27) !important;
+  border-radius: 26px !important;
+  box-shadow: 0 28px 90px rgba(0,0,0,.32), 0 0 50px rgba(105,85,255,.12), inset 0 1px rgba(255,255,255,.08) !important;
+}
+
+/* Course details: matching hero, tool cards, resources, files and roadmap. */
+.course-page .top-nav,
+.resources-page .resources-nav,
+.completed-page .topbar {
+  background: rgba(7, 13, 35, .80) !important;
+  border-color: var(--sm-line) !important;
+  box-shadow: 0 12px 38px rgba(0,0,0,.22), inset 0 1px rgba(255,255,255,.04) !important;
+  backdrop-filter: blur(24px) saturate(155%) !important;
+}
+
+.course-page .course-hero,
+.resources-page .resources-hero {
+  background: linear-gradient(140deg, rgba(28, 37, 86, .76), rgba(11, 22, 53, .82)) !important;
+  border: 1px solid rgba(153, 139, 255, .25) !important;
+  border-radius: 30px !important;
+  box-shadow: 0 24px 70px rgba(0,0,0,.22), inset 0 1px rgba(255,255,255,.08) !important;
+  backdrop-filter: blur(22px) saturate(140%) !important;
+}
+
+.course-page .tool-card,
+.course-page .resource-card,
+.course-page .material-card,
+.course-page .roadmap-step,
+.resources-page .quick-card,
+.resources-page .resource-card {
+  background: linear-gradient(145deg, rgba(21, 32, 70, .84), rgba(8, 15, 40, .92)) !important;
+  border: 1px solid var(--sm-line) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 16px 45px rgba(0,0,0,.19), inset 0 1px rgba(255,255,255,.055) !important;
+  transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease !important;
+}
+.course-page .tool-card:hover,
+.course-page .resource-card:hover,
+.course-page .material-card:hover,
+.resources-page .quick-card:hover,
+.resources-page .resource-card:hover {
+  transform: translateY(-4px) !important;
+  border-color: var(--sm-line-bright) !important;
+  box-shadow: 0 0 32px rgba(113,93,255,.17), 0 22px 50px rgba(0,0,0,.25) !important;
+}
+
+.course-page .eyebrow,
+.resources-page .hero-badge,
+.resources-page .resource-label,
+.completed-page .eyebrow {
+  color: #b8a8ff !important;
+}
+
+.course-page .top-nav button,
+.course-page .primary-button,
+.course-page .upload-button,
+.course-page .upload-small,
+.resources-page .ai-note-button,
+.resources-page .resource-link,
+.completed-page .logout,
+.completed-page .stats {
+  border-radius: 12px !important;
+}
+
+.course-page .status,
+.course-page .material-details,
+.course-page .course-stats,
+.course-page .stat,
+.resources-page .current-course,
+.resources-page .ai-note,
+.completed-page .stats {
+  color: var(--sm-muted) !important;
+}
+
+/* Completed courses / empty states. */
+.completed-page .empty,
+.completed-page .stats,
+.completed-page .trophy {
+  background: linear-gradient(145deg, rgba(20,31,68,.88), rgba(8,16,42,.92)) !important;
+  border: 1px solid var(--sm-line) !important;
+  box-shadow: var(--sm-glow), inset 0 1px rgba(255,255,255,.05) !important;
+}
+.completed-page .container {
+  max-width: 1200px !important;
+}
+
+/* Tutor screen: match the chat bubbles, suggestion chips and sticky composer. */
+#root > div[style*="min-height: 100vh"] button[style*="border-radius: 20px"] {
+  color: #dce4ff !important;
+  border: 1px solid rgba(151,145,255,.24) !important;
+  background: linear-gradient(145deg, rgba(37,48,95,.80), rgba(12,22,53,.92)) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.06) !important;
+  transition: transform .18s ease, border-color .18s ease !important;
+}
+#root > div[style*="min-height: 100vh"] button[style*="border-radius: 20px"]:hover {
+  transform: translateY(-2px) !important;
+  border-color: var(--sm-line-bright) !important;
+}
+#root > div[style*="min-height: 100vh"] div[style*="border-radius: 16px"][style*="white-space: pre-wrap"] {
+  box-shadow: 0 12px 35px rgba(0,0,0,.20), inset 0 1px rgba(255,255,255,.04) !important;
+}
+
+/* Inputs, selectors, textareas and text-based coding editor share focus states. */
+input, textarea, select, .input, .glass-input, .cp-search, .cp-custom-input, .cp-code-editor {
+  accent-color: #8b72ff;
+}
+select option {
+  background: #101a3b;
+  color: #f3f5ff;
+}
+
+/* Keep all links crisp and all icons visually consistent. */
+a { -webkit-tap-highlight-color: transparent; }
+button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid rgba(137, 123, 255, .78) !important;
+  outline-offset: 3px !important;
+}
+
+/* Consistent responsive behavior on phones and tablets. */
+@media (max-width: 760px) {
+  .course-page .course-hero,
+  .resources-page .resources-hero {
+    border-radius: 22px !important;
+    padding: 22px !important;
+  }
+  .course-page .tools-grid,
+  .course-page .resource-grid,
+  .resources-page .quick-grid,
+  .resources-page .resource-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  #root > div[style*="min-height: 100vh"] > div[style*="overflow-y: auto"] {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}
+
+
+/* Wider site-wide polish for the Aurora Academy interface. */
+:root { color-scheme: dark; }
+body { overflow-x: hidden; }
+button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid rgba(166, 145, 255, .82);
+  outline-offset: 3px;
+}
+
+/* The public landing, login and register pages use their own scoped layouts. */
+.asm-landing { color: var(--sm-text); }
+.asm-login { color: var(--sm-text); }
+
+/* Keep older learning tools visually aligned with the midnight-glass theme. */
+#root > div[style*="min-height: 100vh"] > main,
+#root > div[style*="min-height: 100vh"] > section,
+#root > div[style*="min-height: 100vh"] > div {
+  color: var(--sm-text);
+}
+#root > div[style*="min-height: 100vh"] h1,
+#root > div[style*="min-height: 100vh"] h2,
+#root > div[style*="min-height: 100vh"] h3 {
+  color: var(--sm-text);
+}
+#root > div[style*="min-height: 100vh"] p,
+#root > div[style*="min-height: 100vh"] label {
+  color: var(--sm-muted);
+}
+#root > div[style*="min-height: 100vh"] button:not(.btn-primary):not(.asm-login__submit):not(.asm-login__google) {
+  transition: transform .18s ease, border-color .18s ease, background .18s ease, color .18s ease;
+}
+#root > div[style*="min-height: 100vh"] button:not(:disabled):hover {
+  filter: brightness(1.06);
+}
+
+/* Inline-styled tutor chat bubbles inherit the same glossy surface language. */
+#root > div[style*="min-height: 100vh"] div[style*="border-radius: 16px"] {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .13), inset 0 1px rgba(255,255,255,.035);
+}
+#root > div[style*="min-height: 100vh"] textarea,
+#root > div[style*="min-height: 100vh"] select {
+  color-scheme: dark;
+}
+
+/* Sidebar/dashboard interaction polish. */
+.asm-dashboard a, .asm-dashboard button { -webkit-tap-highlight-color: transparent; }
+.asm-dashboard a:focus-visible, .asm-dashboard button:focus-visible, .asm-dashboard input:focus-visible, .asm-dashboard textarea:focus-visible {
+  outline: 2px solid rgba(166, 145, 255, .85);
+  outline-offset: 3px;
+}
+.asm-dashboard .asm-d-plan-item:focus-visible { border-radius: 10px; }
+
+/* Keep motion smooth but restrained on all devices. */
+@media (hover: hover) and (pointer: fine) {
+  .my-courses-page .course-card, .course-page .tool-card, .resources-page .resource-card,
+  .cp-page .cp-problem-item, .completed-page .empty {
+    transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+  }
+}

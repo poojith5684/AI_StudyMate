@@ -1,5 +1,9 @@
 from openai import OpenAI
 from dotenv import load_dotenv
+from pypdf import PdfReader
+from pptx import Presentation
+from docx import Document
+import io
 
 from fastapi import (
     FastAPI,
@@ -1675,6 +1679,86 @@ async def upload(
 
 
 # ============================================================
+# DOCUMENT TEXT EXTRACTION
+# ============================================================
+
+def extract_document_text(file_bytes: bytes, filename: str) -> str:
+    """Extract searchable text from supported study-document formats."""
+    extension = os.path.splitext(filename or "")[1].lower()
+
+    try:
+        if extension == ".pdf":
+            reader = PdfReader(io.BytesIO(file_bytes))
+            return "\n\n".join(
+                (page.extract_text() or "") for page in reader.pages[:100]
+            ).strip()
+
+        if extension == ".docx":
+            document = Document(io.BytesIO(file_bytes))
+            paragraphs = [p.text.strip() for p in document.paragraphs if p.text.strip()]
+            # Also capture text inside tables, which often contain study notes.
+            for table in document.tables:
+                for row in table.rows:
+                    cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                    if cells:
+                        paragraphs.append(" | ".join(cells))
+            return "\n".join(paragraphs).strip()
+
+        if extension == ".pptx":
+            presentation = Presentation(io.BytesIO(file_bytes))
+            slides_text = []
+            for number, slide in enumerate(presentation.slides[:100], start=1):
+                parts = []
+                for shape in slide.shapes:
+                    if getattr(shape, "has_text_frame", False) and shape.text.strip():
+                        parts.append(shape.text.strip())
+                    if getattr(shape, "has_table", False):
+                        for row in shape.table.rows:
+                            parts.append(" | ".join(cell.text.strip() for cell in row.cells))
+                if parts:
+                    slides_text.append(f"Slide {number}\n" + "\n".join(parts))
+            return "\n\n".join(slides_text).strip()
+
+        if extension in {".txt", ".md", ".csv", ".json", ".py", ".c", ".h", ".cpp", ".java", ".sql", ".html", ".xml", ".yaml", ".yml"}:
+            return file_bytes.decode("utf-8", errors="replace").strip()
+
+        return ""
+    except Exception as exc:
+        raise ValueError(f"Could not extract text from {filename}: {exc}") from exc
+
+
+def get_course_document_context(course_id: Optional[str], max_chars: int = 14000) -> str:
+    """Build a bounded context from materials belonging to the selected course."""
+    if not course_id:
+        return ""
+
+    excerpts = []
+    for material in materials:
+        if str(material.get("course_id") or "") != str(course_id):
+            continue
+
+        title = str(material.get("title") or material.get("filename") or "Study material")
+        content = material.get("extracted_text") or material.get("text") or material.get("content") or ""
+        filename = os.path.basename(str(material.get("filename") or ""))
+        path = os.path.join(UPLOAD_DIR, filename) if filename else ""
+
+        # Older uploads may not have stored extracted text. Extract it from the saved file.
+        if not content and path and os.path.isfile(path):
+            try:
+                with open(path, "rb") as handle:
+                    content = extract_document_text(handle.read(), filename)
+                material["extracted_text"] = content
+            except Exception as exc:
+                print("Tutor material extraction failed:", title, repr(exc))
+                continue
+
+        if isinstance(content, str) and content.strip():
+            excerpts.append(f"DOCUMENT: {title}\n{content.strip()[:6000]}")
+
+    return "\n\n---\n\n".join(excerpts)[:max_chars]
+
+
+# ============================================================
 # COURSE FILE UPLOAD
 # ============================================================
 
@@ -1733,32 +1817,37 @@ async def upload_material(
         filename,
     )
 
-    with open(
-        file_path,
-        "wb",
-    ) as buffer:
+    file_bytes = await file.read()
+    extension = os.path.splitext(file.filename)[1].lower()
+    supported_extensions = {
+        ".pdf", ".docx", ".pptx", ".txt", ".md", ".csv", ".json",
+        ".py", ".c", ".h", ".cpp", ".java", ".sql", ".html", ".xml",
+        ".yaml", ".yml",
+    }
 
-        shutil.copyfileobj(
-            file.file,
-            buffer,
+    if extension not in supported_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Upload PDF, DOCX, PPTX, TXT, or a supported text/code file.",
         )
 
+    try:
+        extracted_text = extract_document_text(file_bytes, file.filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    with open(file_path, "wb") as buffer:
+        buffer.write(file_bytes)
+
     material = {
-
         "id": file_id,
-
         "title": file.filename,
-
         "filename": filename,
-
         "type": "file",
-
         "course_id": course_id,
-
-        "url": (
-            f"/uploads/{filename}"
-        ),
-
+        "url": f"/uploads/{filename}",
+        "extracted_text": extracted_text,
+        "text_extracted": bool(extracted_text),
         "created_at": now_iso(),
     }
 
@@ -1930,6 +2019,12 @@ def ask_tutor(
         }
 
     # --------------------------------------------------------
+    # COURSE DOCUMENT CONTEXT
+    # --------------------------------------------------------
+
+    document_context = get_course_document_context(data.course_id)
+
+    # --------------------------------------------------------
     # SYSTEM PROMPT
     # --------------------------------------------------------
 
@@ -1973,6 +2068,12 @@ Your responsibilities:
 13. If the question is ambiguous, make a reasonable interpretation
     and explain it.
 14. Be helpful, accurate and concise unless the student asks for detail.
+15. If STUDY DOCUMENT CONTEXT is provided, use it as the primary source for questions about uploaded materials.
+16. Do not claim that a document contains information that is not present in its extracted text.
+17. If the document does not contain the answer, say so clearly and then optionally give general knowledge separately.
+
+STUDY DOCUMENT CONTEXT:
+{document_context if document_context else "No readable documents have been uploaded to this course yet."}
 """
 
     # --------------------------------------------------------

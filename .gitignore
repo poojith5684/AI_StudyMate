@@ -1,20 +1,79 @@
+# ==========================================
+# AI StudyMate - Git Ignore Configuration
+# ==========================================
+
+# Environment variables and secrets
 .env
+.env.*
 *.env
 backend/.env
 frontend/.env
+!.env.example
+!.dev.vars.example
+
+# Python virtual environments
 venv/
+.venv/
 backend/venv/
+backend/.venv/
+
+# Python cache and compiled files
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Node.js dependencies
 node_modules/
 frontend/node_modules/
+
+# Build output
 dist/
 frontend/dist/
+build/
+frontend/build/
+
+# Uploaded files and user data
 uploads/
 backend/uploads/
 
-# wrangler files
-.wrangler
+# Wrangler and Cloudflare local files
+.wrangler/
 .dev.vars*
 !.dev.vars.example
-!.env.example
+
+# Backup files
+*.backup
+*.bak
+*.before_*
+*_backup_*/
+*.old
+*.orig
+*~
+
+# Temporary patch scripts and files
+apply_*.py
+*_patch.txt
+course_card_progress_patch/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE settings
+.vscode/
+.idea/
+
+# Test and coverage output
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp

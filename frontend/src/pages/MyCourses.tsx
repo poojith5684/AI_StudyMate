@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+
 import {
   ArrowLeft,
   Brain,
@@ -14,14 +15,61 @@ import {
   Loader2,
 } from 'lucide-react';
 
-import { coursesApi } from '../services/api';
+import { coursesApi, codingApi } from '../services/api';
 import { signOut } from '../services/supabase';
+import CourseIcon from '../components/CourseIcon';
 import type { Course } from '../types';
+
+
+type CourseCodingStats = { solved: number; total: number; percent: number };
+type CodingProblemForProgress = { id: string };
+type CodingProgressForCard = { problem_id: string; solved?: boolean };
+
+async function loadCourseCodingStats(courseList: Course[]): Promise<Record<string, CourseCodingStats>> {
+  const pairs = await Promise.all(courseList.map(async (course) => {
+    try {
+      const [problemResult, progressResult] = await Promise.all([
+        codingApi.problems(course.id),
+        codingApi.progress(course.id),
+      ]);
+      const problems = Array.isArray(problemResult) ? problemResult as CodingProblemForProgress[] : [];
+      const records = Array.isArray(progressResult) ? progressResult as CodingProgressForCard[] : [];
+
+      // Combine cloud progress with this course's local progress as a fallback.
+      // Prefer the course-scoped key so solved IDs from another course are not mixed in.
+      let localSolved: string[] = [];
+      try {
+        const scopedKey = `ai_studymate_coding_solved_v1:${course.id}`;
+        const scopedValue = localStorage.getItem(scopedKey);
+        const saved = JSON.parse(scopedValue ?? localStorage.getItem('ai_studymate_coding_solved_v1') ?? '[]');
+        if (Array.isArray(saved)) {
+          localSolved = saved.filter((item: unknown): item is string => typeof item === 'string');
+        }
+      } catch {
+        // Cloud progress still works when local browser storage is unavailable.
+      }
+
+      const solvedIds = new Set<string>([
+        ...records.filter((item) => item.solved).map((item) => item.problem_id),
+        ...localSolved,
+      ]);
+      const total = problems.length;
+      const solved = problems.filter((problem) => solvedIds.has(problem.id)).length;
+      return [course.id, { solved, total, percent: total ? Math.round((solved / total) * 100) : 0 }] as const;
+    } catch (error) {
+      console.warn(`Could not load coding progress for course ${course.id}`, error);
+      return [course.id, { solved: 0, total: 0, percent: 0 }] as const;
+    }
+  }));
+
+  return Object.fromEntries(pairs);
+}
 
 export default function MyCourses() {
   const navigate = useNavigate();
 
   const [courses, setCourses] = useState<Course[]>([]);
+  const [codingStats, setCodingStats] = useState<Record<string, CourseCodingStats>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -47,9 +95,14 @@ export default function MyCourses() {
       const data = await coursesApi.list();
 
       setCourses(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load courses:', err);
-      setError(err?.message || 'Failed to load courses');
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to load courses'
+      );
     } finally {
       setLoading(false);
     }
@@ -59,6 +112,18 @@ export default function MyCourses() {
     await signOut();
     navigate('/login');
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (courses.length === 0) {
+      setCodingStats({});
+      return () => { cancelled = true; };
+    }
+    void loadCourseCodingStats(courses).then((next) => {
+      if (!cancelled) setCodingStats(next);
+    });
+    return () => { cancelled = true; };
+  }, [courses]);
 
   return (
     <div className="my-courses-page">
@@ -355,6 +420,58 @@ export default function MyCourses() {
             inset 0 1px rgba(255,255,255,0.08);
         }
 
+        .course-icon .course-mark {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 0;
+        }
+
+        .course-icon .course-mark--python {
+          filter: drop-shadow(0 0 8px rgba(55,118,171,0.25));
+        }
+
+        .course-icon .course-mark--java {
+          color: #ffbd73;
+          filter: drop-shadow(0 0 8px rgba(255,145,77,0.25));
+        }
+
+        .course-icon .course-mark--sql {
+          color: #69d9ff;
+          filter: drop-shadow(0 0 8px rgba(105,217,255,0.25));
+        }
+
+        .course-icon .course-mark--ai {
+          color: #b7a4ff;
+        }
+
+        .course-icon .course-mark--dsa {
+          color: #8d9cff;
+        }
+
+        .course-icon .course-mark--math {
+          color: #ff9fcf;
+        }
+
+        .course-icon .course-mark--web {
+          color: #65e6d1;
+        }
+
+        .course-icon .course-mark--network {
+          color: #79c8ff;
+        }
+
+        .course-icon .course-mark--terminal,
+        .course-icon .course-mark--hardware,
+        .course-icon .course-mark--code {
+          color: #92a4ff;
+        }
+
+        .course-icon .course-mark--notes,
+        .course-icon .course-mark--general {
+          color: #c5b9ff;
+        }
+
         .open-button {
           width: 38px;
           height: 38px;
@@ -491,6 +608,7 @@ export default function MyCourses() {
           gap: 7px;
 
           margin-top: 17px;
+          flex-wrap: wrap;
         }
 
         .tag {
@@ -637,7 +755,6 @@ export default function MyCourses() {
         }
 
         @media(max-width: 700px) {
-
           .courses-nav {
             padding: 0 16px;
           }
@@ -666,10 +783,9 @@ export default function MyCourses() {
         }
       `}</style>
 
-      {/* ================= NAVBAR ================= */}
+      {/* NAVBAR */}
 
       <nav className="courses-nav">
-
         <Link
           to="/dashboard"
           className="brand"
@@ -684,7 +800,6 @@ export default function MyCourses() {
         </Link>
 
         <div className="nav-right">
-
           <span className="user-name">
             {userName}
           </span>
@@ -696,15 +811,12 @@ export default function MyCourses() {
             <LogOut size={17} />
             Logout
           </button>
-
         </div>
-
       </nav>
 
-      {/* ================= CONTENT ================= */}
+      {/* MAIN CONTENT */}
 
       <main className="page-container">
-
         <Link
           to="/dashboard"
           className="back"
@@ -714,9 +826,7 @@ export default function MyCourses() {
         </Link>
 
         <div className="heading-row">
-
           <div>
-
             <div className="eyebrow">
               <BookOpen size={14} />
               YOUR LEARNING
@@ -729,46 +839,38 @@ export default function MyCourses() {
             <p className="subtitle">
               Pick up where you left off and keep making progress.
             </p>
-
           </div>
 
           {!loading && !error && (
             <div className="course-count">
-              {courses.length} {courses.length === 1 ? 'Course' : 'Courses'}
+              {courses.length}{' '}
+              {courses.length === 1 ? 'Course' : 'Courses'}
             </div>
           )}
-
         </div>
 
-        {/* ================= LOADING ================= */}
+        {/* LOADING */}
 
         {loading && (
           <div className="loading">
-
             <Loader2
               size={34}
               className="spinner"
             />
 
-            <span>
-              Loading your courses...
-            </span>
-
+            <span>Loading your courses...</span>
           </div>
         )}
 
-        {/* ================= ERROR ================= */}
+        {/* ERROR */}
 
         {!loading && error && (
           <div className="error-box">
-
             <strong>
               Could not load your courses
             </strong>
 
-            <p>
-              {error}
-            </p>
+            <p>{error}</p>
 
             <button
               className="retry"
@@ -776,22 +878,18 @@ export default function MyCourses() {
             >
               Try Again
             </button>
-
           </div>
         )}
 
-        {/* ================= EMPTY ================= */}
+        {/* EMPTY */}
 
         {!loading && !error && courses.length === 0 && (
           <div className="empty">
-
             <div className="empty-icon">
               <Search size={32} />
             </div>
 
-            <h3>
-              No courses yet
-            </h3>
+            <h3>No courses yet</h3>
 
             <p>
               Create a course from your dashboard to start learning.
@@ -804,18 +902,14 @@ export default function MyCourses() {
               <Search size={17} />
               Explore Courses
             </Link>
-
           </div>
         )}
 
-        {/* ================= COURSES ================= */}
+        {/* COURSE CARDS */}
 
         {!loading && !error && courses.length > 0 && (
-
           <div className="courses-grid">
-
             {courses.map((course) => {
-
               const progress = 0;
 
               return (
@@ -827,19 +921,19 @@ export default function MyCourses() {
                     color: 'inherit',
                   }}
                 >
-
                   <article className="course-card">
-
                     <div className="card-top">
-
                       <div className="course-icon">
-                        <BookOpen size={27} />
+                        {/* Dynamic icon based on course title */}
+                        <CourseIcon
+                          title={course.title}
+                          size={30}
+                        />
                       </div>
 
                       <div className="open-button">
                         <ArrowRight size={18} />
                       </div>
-
                     </div>
 
                     <div className="course-label">
@@ -857,98 +951,75 @@ export default function MyCourses() {
                     </p>
 
                     <div className="progress-section">
-
                       <div className="progress-header">
-
-                        <span>
-                          Progress
-                        </span>
+                        <span>Progress</span>
 
                         <span className="progress-percent">
                           {progress}%
                         </span>
-
                       </div>
 
                       <div className="progress-track">
-
                         <div
                           className="progress-fill"
                           style={{
                             width: `${progress}%`,
                           }}
                         />
-
                       </div>
+                    </div>
 
+
+                    <div className="coding-card-progress" style={{ marginTop: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6, color: '#8291b5', fontSize: 10 }}>
+                        <span>Coding problems solved</span>
+                        <strong style={{ color: '#bdb1ff' }}>{codingStats[course.id]?.solved ?? 0}/{codingStats[course.id]?.total ?? 0}</strong>
+                      </div>
+                      <div style={{ height: 5, borderRadius: 99, overflow: 'hidden', background: 'rgba(104,121,180,.18)' }}>
+                        <div style={{ height: '100%', width: `${codingStats[course.id]?.percent ?? 0}%`, borderRadius: 'inherit', background: 'linear-gradient(90deg,#7565ff,#48d6e8)', transition: 'width .25s ease' }} />
+                      </div>
                     </div>
 
                     <div className="course-meta">
-
                       <span className="materials">
-
                         <Upload size={14} />
 
-                        {course.material_count || 0}
-
-                        {' '}
+                        {course.material_count || 0}{' '}
 
                         {course.material_count === 1
                           ? 'material'
                           : 'materials'}
-
                       </span>
 
                       <span className="start">
-
                         <Play size={13} />
-
                         Start learning
-
                       </span>
-
                     </div>
 
                     <div className="tags">
-
                       <span className="tag tag-tutor">
-
                         <MessageSquare size={12} />
-
                         AI Tutor
-
                       </span>
 
                       <span className="tag tag-quiz">
-
                         <Target size={12} />
-
                         Quiz
-
                       </span>
 
                       <span className="tag tag-learn">
-
                         <Play size={11} />
-
                         Learn
-
                       </span>
-
                     </div>
-
                   </article>
-
                 </Link>
               );
             })}
-
           </div>
-
         )}
-
       </main>
-
     </div>
   );
 }
